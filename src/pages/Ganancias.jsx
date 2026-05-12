@@ -1,0 +1,759 @@
+import { useEffect, useMemo, useState } from 'react'
+import { supabase } from '../lib/supabase'
+import { parseISO, getMonth, getYear, format, subMonths } from 'date-fns'
+import { es } from 'date-fns/locale'
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  PieChart, Pie, Cell, LineChart, Line,
+} from 'recharts'
+
+// ─── Constants ───────────────────────────────────────────────────────────────
+
+const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
+  'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
+const MESES_SHORT = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
+
+const currentYear = new Date().getFullYear()
+const YEARS = [currentYear - 2, currentYear - 1, currentYear, currentYear + 1]
+
+const EXPENSE_CATEGORIES = [
+  'El Barba / Ferretería', 'Extragas', 'EDEA', 'Tavo Destapador', 'Scyco Agua',
+  'Cootelser', 'Sueldos', 'Jardinero', 'Limpieza de pileta', 'Bazar',
+  'Publicidad en Internet', 'Marea TV Cable', 'Gastos extras', 'Mantenimiento',
+  'Bomberos Voluntarios', 'Forrajería', 'Casa Triju', 'Varios',
+]
+
+const PIE_COLORS = [
+  '#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4',
+  '#f97316','#84cc16','#ec4899','#14b8a6','#6366f1','#e11d48',
+  '#0ea5e9','#a3e635','#fb923c','#d946ef','#22c55e','#64748b',
+]
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function ars(v) {
+  if (!v && v !== 0) return '-'
+  return `$${Number(v).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
+}
+function usd(v) {
+  if (!v && v !== 0) return '-'
+  return `U$D ${Number(v).toLocaleString('es-AR', { maximumFractionDigits: 2 })}`
+}
+function pct(part, total) {
+  if (!total) return '0%'
+  return `${((part / total) * 100).toFixed(1)}%`
+}
+
+function inPeriod(dateStr, mes, anio, allYear) {
+  if (!dateStr) return false
+  const d = parseISO(dateStr)
+  if (allYear) return getYear(d) === anio
+  return getMonth(d) === mes && getYear(d) === anio
+}
+
+function sumField(arr, field) {
+  return arr.reduce((s, r) => s + (Number(r[field]) || 0), 0)
+}
+
+// ─── Sub-components ──────────────────────────────────────────────────────────
+
+function DeltaBadge({ current, previous }) {
+  if (!previous || previous === 0) return null
+  const diff = current - previous
+  const p = ((diff / Math.abs(previous)) * 100).toFixed(1)
+  const up = diff >= 0
+  return (
+    <span className={`inline-flex items-center gap-0.5 text-xs font-medium px-1.5 py-0.5 rounded-full ${up ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+      {up ? '↑' : '↓'} {Math.abs(p)}%
+    </span>
+  )
+}
+
+function SummaryCard({ label, value, sub, prevValue, color = 'gray', large }) {
+  const colors = {
+    green:  { bg: 'bg-white', border: 'border-green-200', label: 'text-green-600', val: 'text-green-700' },
+    red:    { bg: 'bg-white', border: 'border-red-200',   label: 'text-red-600',   val: 'text-red-700' },
+    blue:   { bg: 'bg-white', border: 'border-blue-200',  label: 'text-blue-600',  val: 'text-blue-700' },
+    gray:   { bg: 'bg-white', border: 'border-gray-200',  label: 'text-gray-500',  val: 'text-gray-800' },
+    dark:   { bg: 'bg-slate-800', border: 'border-slate-700', label: 'text-slate-300', val: 'text-white' },
+  }
+  const c = colors[color]
+  return (
+    <div className={`${c.bg} ${c.border} border rounded-xl p-5`}>
+      <p className={`text-xs font-medium uppercase tracking-wide mb-1 ${c.label}`}>{label}</p>
+      <p className={`font-bold ${c.val} ${large ? 'text-3xl' : 'text-2xl'}`}>{value}</p>
+      {sub && <p className="text-xs text-gray-400 mt-1">{sub}</p>}
+      {prevValue !== undefined && (
+        <div className="mt-2">
+          <DeltaBadge current={parseFloat(String(value).replace(/[^0-9.-]/g, ''))} previous={prevValue} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+function Section({ title, children }) {
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+      <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-5">{title}</h3>
+      {children}
+    </div>
+  )
+}
+
+// ─── Export helpers ───────────────────────────────────────────────────────────
+
+function exportCSV(rows, filename) {
+  if (!rows.length) return
+  const headers = Object.keys(rows[0]).join(',')
+  const body = rows.map(r => Object.values(r).map(v => `"${v}"`).join(',')).join('\n')
+  const blob = new Blob(['﻿' + headers + '\n' + body], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url; a.download = filename; a.click()
+  URL.revokeObjectURL(url)
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
+
+export default function Ganancias() {
+  const [reservas, setReservas]       = useState([])
+  const [silvia, setSilvia]           = useState([])
+  const [juli, setJuli]               = useState([])
+  const [loading, setLoading]         = useState(true)
+  const [mes, setMes]                 = useState(new Date().getMonth())
+  const [anio, setAnio]               = useState(currentYear)
+  const [allYear, setAllYear]         = useState(false)
+  const [activeTab, setActiveTab]     = useState('resumen')
+
+  useEffect(() => {
+    Promise.all([
+      supabase.from('reservas').select('*').neq('estado', 'Cancelada'),
+      supabase.from('caja_silvia').select('*'),
+      supabase.from('caja_juli').select('*'),
+    ]).then(([r, s, j]) => {
+      setReservas(r.data || [])
+      setSilvia(s.data || [])
+      setJuli(j.data || [])
+      setLoading(false)
+    })
+  }, [])
+
+  // ── Filtered data for selected period ──────────────────────────────────────
+  const fReservas = useMemo(() =>
+    reservas.filter(r => inPeriod(r.fecha_entrada, mes, anio, allYear)),
+    [reservas, mes, anio, allYear]
+  )
+  const fSilvia = useMemo(() =>
+    silvia.filter(r => inPeriod(r.fecha, mes, anio, allYear)),
+    [silvia, mes, anio, allYear]
+  )
+  const fJuliMain = useMemo(() =>
+    juli.filter(r => r.seccion === 'main' && inPeriod(r.fecha, mes, anio, allYear)),
+    [juli, mes, anio, allYear]
+  )
+  const fJuliGastos = useMemo(() =>
+    juli.filter(r => r.seccion === 'gastos' && inPeriod(r.fecha, mes, anio, allYear)),
+    [juli, mes, anio, allYear]
+  )
+
+  // ── Previous period (for delta comparison) ─────────────────────────────────
+  const prevDate  = subMonths(new Date(anio, mes, 1), 1)
+  const prevMes   = getMonth(prevDate)
+  const prevAnio  = getYear(prevDate)
+
+  const pSilvia = useMemo(() =>
+    silvia.filter(r => inPeriod(r.fecha, prevMes, prevAnio, false)),
+    [silvia, prevMes, prevAnio]
+  )
+  const prevIngARS = sumField(pSilvia, 'ingreso_pesos') + sumField(pSilvia, 'ingreso_juli')
+  const prevGastos = sumField(pSilvia, 'gasto')
+  const prevGanancia = prevIngARS - prevGastos
+
+  // ── Income totals ──────────────────────────────────────────────────────────
+  const ingARS     = sumField(fSilvia, 'ingreso_pesos') + sumField(fSilvia, 'ingreso_juli')
+  const ingUSD     = sumField(fSilvia, 'ingreso_dolares')
+  const gastoTotal = sumField(fSilvia, 'gasto')
+  const retiroPesos  = sumField(fSilvia, 'retiro_pesos')
+  const retiroUSD    = sumField(fSilvia, 'retiro_dolares')
+  const ganancia   = ingARS - gastoTotal
+
+  // Reservas income (contracted)
+  const reservasIncome = sumField(fReservas, 'monto_total')
+  const reservasCount  = fReservas.length
+
+  // Juli ingresos/egresos
+  const juliIngresos = fJuliMain.filter(r => r.tipo_main === 'ingreso').reduce((s,r) => s + (r.importe||0), 0)
+  const juliEgresos  = fJuliMain.filter(r => r.tipo_main === 'egreso').reduce((s,r) => s + (r.importe||0), 0)
+  const juliGastos   = fJuliGastos.reduce((s,r) => s + (r.importe||0) - (r.devolucion||0), 0)
+
+  // ── Income by cabin ────────────────────────────────────────────────────────
+  const porCabana = useMemo(() => {
+    const acc = {}
+    for (const r of fReservas) {
+      if (!acc[r.cabana]) acc[r.cabana] = { reservas: 0, monto: 0 }
+      acc[r.cabana].reservas += 1
+      acc[r.cabana].monto += r.monto_total || 0
+    }
+    return Object.entries(acc)
+      .map(([cab, d]) => ({ cabana: cab, reservas: d.reservas, monto: d.monto }))
+      .sort((a, b) => b.monto - a.monto)
+  }, [fReservas])
+
+  // ── Expense by category ────────────────────────────────────────────────────
+  const porCategoria = useMemo(() => {
+    const acc = {}
+    for (const r of fSilvia) {
+      if (!r.gasto || r.gasto <= 0) continue
+      const cat = r.cuenta || 'Varios'
+      acc[cat] = (acc[cat] || 0) + r.gasto
+    }
+    // Build ordered list
+    const ordered = EXPENSE_CATEGORIES.map(cat => ({
+      cat,
+      monto: acc[cat] || 0,
+    })).filter(x => x.monto > 0)
+    // Add any uncategorized
+    for (const [cat, monto] of Object.entries(acc)) {
+      if (!EXPENSE_CATEGORIES.includes(cat)) ordered.push({ cat, monto })
+    }
+    return ordered.sort((a, b) => b.monto - a.monto)
+  }, [fSilvia])
+
+  // ── Monthly series (all year, for charts) ─────────────────────────────────
+  const monthlySeries = useMemo(() => {
+    return MESES_SHORT.map((label, m) => {
+      const rs = reservas.filter(r => inPeriod(r.fecha_entrada, m, anio, false))
+      const sv = silvia.filter(r => inPeriod(r.fecha, m, anio, false))
+      const ing = sumField(sv, 'ingreso_pesos') + sumField(sv, 'ingreso_juli')
+      const gas = sumField(sv, 'gasto')
+      return {
+        mes: label,
+        Ingresos: ing,
+        Gastos: gas,
+        Ganancia: ing - gas,
+        Reservas: sumField(rs, 'monto_total'),
+      }
+    })
+  }, [reservas, silvia, anio])
+
+  // ── Withdrawals ────────────────────────────────────────────────────────────
+  const retiros = useMemo(() =>
+    fSilvia
+      .filter(r => (r.retiro_pesos > 0) || (r.retiro_dolares > 0))
+      .sort((a, b) => a.fecha.localeCompare(b.fecha))
+      .map(r => ({
+        fecha:  r.fecha,
+        detalle: r.detalle || '-',
+        cuenta: r.cuenta || '-',
+        retiro_pesos:   r.retiro_pesos   || 0,
+        retiro_dolares: r.retiro_dolares || 0,
+      })),
+    [fSilvia]
+  )
+
+  const totalRetiroPesos = retiros.reduce((s,r) => s + r.retiro_pesos, 0)
+  const totalRetiroUSD   = retiros.reduce((s,r) => s + r.retiro_dolares, 0)
+
+  // ── Pie data ───────────────────────────────────────────────────────────────
+  const pieData = porCategoria.slice(0, 12).map(x => ({ name: x.cat, value: x.monto }))
+
+  // ─────────────────────────────────────────────────────────────────────────
+  const periodLabel = allYear
+    ? `Año ${anio}`
+    : `${MESES[mes]} ${anio}`
+
+  const TABS = [
+    { id: 'resumen',  label: 'Resumen' },
+    { id: 'ingresos', label: 'Ingresos' },
+    { id: 'gastos',   label: 'Gastos' },
+    { id: 'retiros',  label: 'Retiros' },
+    { id: 'graficos', label: 'Gráficos' },
+  ]
+
+  if (loading) return <p className="text-gray-500 text-center py-16">Cargando...</p>
+
+  return (
+    <div className="max-w-6xl mx-auto space-y-6">
+
+      {/* ── Header ─────────────────────────────────────────────────────── */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-800">Ganancias</h2>
+          <p className="text-sm text-gray-500">{periodLabel}</p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Mes */}
+          <select
+            value={mes}
+            onChange={e => { setMes(Number(e.target.value)); setAllYear(false) }}
+            disabled={allYear}
+            className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 disabled:opacity-40"
+          >
+            {MESES.map((m, i) => <option key={i} value={i}>{m}</option>)}
+          </select>
+
+          {/* Año */}
+          <select
+            value={anio}
+            onChange={e => setAnio(Number(e.target.value))}
+            className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
+          >
+            {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+
+          {/* Año completo toggle */}
+          <button
+            onClick={() => setAllYear(v => !v)}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${allYear ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}
+          >
+            Año completo
+          </button>
+
+          {/* Export CSV */}
+          <button
+            onClick={() => exportCSV(
+              fReservas.map(r => ({ codigo: r.codigo, cabana: r.cabana, fecha_entrada: r.fecha_entrada, monto_total: r.monto_total, estado: r.estado })),
+              `ganancias_${periodLabel.replace(' ', '_')}.csv`
+            )}
+            className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 transition-colors"
+          >
+            ↓ Exportar CSV
+          </button>
+
+          {/* Print PDF */}
+          <button
+            onClick={() => window.print()}
+            className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 transition-colors"
+          >
+            🖨 PDF
+          </button>
+        </div>
+      </div>
+
+      {/* ── Tabs ───────────────────────────────────────────────────────── */}
+      <div className="flex gap-0 border-b border-gray-200">
+        {TABS.map(t => (
+          <button
+            key={t.id}
+            onClick={() => setActiveTab(t.id)}
+            className={`px-5 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${
+              activeTab === t.id
+                ? 'border-slate-800 text-slate-800'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ════════════════════════════════════════════════════════════════ */}
+      {/*  TAB: RESUMEN                                                    */}
+      {/* ════════════════════════════════════════════════════════════════ */}
+      {activeTab === 'resumen' && (
+        <div className="space-y-6">
+          {/* Big cards row */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <SummaryCard
+              label="Ingresos ARS"
+              value={ars(ingARS)}
+              color="green"
+              large
+              prevValue={prevIngARS}
+            />
+            <SummaryCard
+              label="Ingresos USD"
+              value={usd(ingUSD)}
+              color="blue"
+              large
+            />
+            <SummaryCard
+              label="Gastos totales"
+              value={ars(gastoTotal)}
+              color="red"
+              large
+              prevValue={prevGastos}
+            />
+            <div className={`border rounded-xl p-5 ${ganancia >= 0 ? 'bg-white border-green-200' : 'bg-white border-red-200'}`}>
+              <p className={`text-xs font-medium uppercase tracking-wide mb-1 ${ganancia >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                Ganancia neta
+              </p>
+              <p className={`text-3xl font-bold ${ganancia >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                {ars(ganancia)}
+              </p>
+              <div className="mt-2">
+                <DeltaBadge current={ganancia} previous={prevGanancia} />
+              </div>
+            </div>
+          </div>
+
+          {/* Secondary stats */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            <SummaryCard label="Reservas" value={reservasCount} sub="del período" />
+            <SummaryCard label="Facturado" value={ars(reservasIncome)} sub="monto contratado" />
+            <SummaryCard label="Juli ingresos" value={ars(juliIngresos)} color="green" />
+            <SummaryCard label="Juli egresos" value={ars(juliEgresos)} color="red" />
+            <SummaryCard label="Retiro pesos" value={ars(retiroPesos)} />
+            <SummaryCard label="Retiro USD" value={usd(retiroUSD)} />
+          </div>
+
+          {/* Quick cabin top 5 */}
+          <Section title="Top cabañas del período">
+            {porCabana.length === 0 ? (
+              <p className="text-gray-400 text-sm">Sin reservas en este período.</p>
+            ) : (
+              <div className="space-y-2">
+                {porCabana.slice(0, 8).map(({ cabana, reservas: cnt, monto }) => {
+                  const maxMonto = porCabana[0]?.monto || 1
+                  return (
+                    <div key={cabana} className="flex items-center gap-3">
+                      <span className="text-sm font-medium text-gray-700 w-32 flex-shrink-0">{cabana}</span>
+                      <div className="flex-1 bg-gray-100 rounded-full h-2 overflow-hidden">
+                        <div
+                          className="h-2 rounded-full bg-blue-500"
+                          style={{ width: `${(monto / maxMonto) * 100}%` }}
+                        />
+                      </div>
+                      <span className="text-sm font-semibold text-gray-800 w-28 text-right">{ars(monto)}</span>
+                      <span className="text-xs text-gray-400 w-20 text-right">{cnt} reserva{cnt !== 1 ? 's' : ''}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </Section>
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════ */}
+      {/*  TAB: INGRESOS                                                   */}
+      {/* ════════════════════════════════════════════════════════════════ */}
+      {activeTab === 'ingresos' && (
+        <div className="space-y-6">
+          <div className="grid sm:grid-cols-3 gap-4">
+            <SummaryCard label="Ingresos ARS (Caja Silvia)" value={ars(sumField(fSilvia,'ingreso_pesos'))} color="green" />
+            <SummaryCard label="Ingresos Juli (traspasados)" value={ars(sumField(fSilvia,'ingreso_juli'))} color="green" />
+            <SummaryCard label="Ingresos USD" value={usd(ingUSD)} color="blue" />
+          </div>
+
+          <Section title="Ingresos por cabaña">
+            {porCabana.length === 0 ? (
+              <p className="text-gray-400 text-sm">Sin reservas en este período.</p>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-slate-800 text-white">
+                    <th className="text-left px-4 py-2.5 rounded-tl-lg font-medium">Cabaña</th>
+                    <th className="text-center px-4 py-2.5 font-medium">Reservas</th>
+                    <th className="text-right px-4 py-2.5 font-medium">Monto total</th>
+                    <th className="text-right px-4 py-2.5 rounded-tr-lg font-medium">% del total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {porCabana.map(({ cabana, reservas: cnt, monto }, i) => (
+                    <tr key={cabana} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                      <td className="px-4 py-2.5 font-medium text-gray-800">{cabana}</td>
+                      <td className="px-4 py-2.5 text-center text-gray-600">{cnt}</td>
+                      <td className="px-4 py-2.5 text-right font-semibold text-green-700">{ars(monto)}</td>
+                      <td className="px-4 py-2.5 text-right text-gray-500">{pct(monto, reservasIncome)}</td>
+                    </tr>
+                  ))}
+                  <tr className="bg-slate-50 border-t-2 border-slate-200 font-semibold">
+                    <td className="px-4 py-2.5">TOTAL</td>
+                    <td className="px-4 py-2.5 text-center">{reservasCount}</td>
+                    <td className="px-4 py-2.5 text-right text-green-700">{ars(reservasIncome)}</td>
+                    <td className="px-4 py-2.5 text-right">100%</td>
+                  </tr>
+                </tbody>
+              </table>
+            )}
+          </Section>
+
+          <Section title="Detalle Caja Silvia — ingresos del período">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-slate-800 text-white">
+                  <th className="text-left px-3 py-2.5 rounded-tl-lg font-medium">Fecha</th>
+                  <th className="text-left px-3 py-2.5 font-medium">Detalle</th>
+                  <th className="text-right px-3 py-2.5 font-medium">Ingreso $</th>
+                  <th className="text-right px-3 py-2.5 font-medium">Ing. Juli</th>
+                  <th className="text-right px-3 py-2.5 rounded-tr-lg font-medium">Ing. USD</th>
+                </tr>
+              </thead>
+              <tbody>
+                {fSilvia.filter(r => r.ingreso_pesos > 0 || r.ingreso_juli > 0 || r.ingreso_dolares > 0)
+                  .sort((a,b) => a.fecha.localeCompare(b.fecha))
+                  .map((r, i) => (
+                    <tr key={r.id} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                      <td className="px-3 py-2 text-gray-600">{r.fecha}</td>
+                      <td className="px-3 py-2 text-gray-700">{r.detalle || '-'}</td>
+                      <td className="px-3 py-2 text-right text-green-700 font-medium">{r.ingreso_pesos > 0 ? ars(r.ingreso_pesos) : '-'}</td>
+                      <td className="px-3 py-2 text-right text-blue-700 font-medium">{r.ingreso_juli > 0 ? ars(r.ingreso_juli) : '-'}</td>
+                      <td className="px-3 py-2 text-right text-indigo-700 font-medium">{r.ingreso_dolares > 0 ? usd(r.ingreso_dolares) : '-'}</td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </Section>
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════ */}
+      {/*  TAB: GASTOS                                                      */}
+      {/* ════════════════════════════════════════════════════════════════ */}
+      {activeTab === 'gastos' && (
+        <div className="space-y-6">
+          <div className="grid sm:grid-cols-3 gap-4">
+            <SummaryCard label="Gastos Caja Silvia" value={ars(gastoTotal)} color="red" />
+            <SummaryCard label="Gastos Juli (neto)" value={ars(juliGastos)} color="red" />
+            <SummaryCard label="Total gastos combinados" value={ars(gastoTotal + juliGastos)} color="red" large />
+          </div>
+
+          <Section title="Desglose de gastos por categoría — Caja Silvia">
+            {porCategoria.length === 0 ? (
+              <p className="text-gray-400 text-sm">Sin gastos registrados en este período.</p>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-slate-800 text-white">
+                    <th className="text-left px-4 py-2.5 rounded-tl-lg font-medium">Categoría</th>
+                    <th className="text-right px-4 py-2.5 font-medium">Monto</th>
+                    <th className="text-right px-4 py-2.5 font-medium">% del total</th>
+                    <th className="text-left px-4 py-2.5 rounded-tr-lg font-medium w-48">Proporción</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {porCategoria.map(({ cat, monto }, i) => (
+                    <tr key={cat} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                      <td className="px-4 py-2.5 text-gray-800 font-medium">{cat}</td>
+                      <td className="px-4 py-2.5 text-right text-red-700 font-semibold">{ars(monto)}</td>
+                      <td className="px-4 py-2.5 text-right text-gray-500">{pct(monto, gastoTotal)}</td>
+                      <td className="px-4 py-2.5">
+                        <div className="bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                          <div
+                            className="h-1.5 rounded-full bg-red-400"
+                            style={{ width: `${(monto / (porCategoria[0]?.monto || 1)) * 100}%` }}
+                          />
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  <tr className="bg-slate-50 border-t-2 border-slate-200 font-semibold">
+                    <td className="px-4 py-2.5">TOTAL GASTOS</td>
+                    <td className="px-4 py-2.5 text-right text-red-700">{ars(gastoTotal)}</td>
+                    <td className="px-4 py-2.5 text-right">100%</td>
+                    <td />
+                  </tr>
+                </tbody>
+              </table>
+            )}
+          </Section>
+
+          {/* Juli gastos section */}
+          <Section title="Gastos Caja Juli — efectivo / Mercado Pago">
+            {fJuliGastos.length === 0 ? (
+              <p className="text-gray-400 text-sm">Sin gastos registrados.</p>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-slate-800 text-white">
+                    <th className="text-left px-3 py-2.5 rounded-tl-lg font-medium">Fecha</th>
+                    <th className="text-left px-3 py-2.5 font-medium">Detalle</th>
+                    <th className="text-left px-3 py-2.5 font-medium">Modalidad</th>
+                    <th className="text-right px-3 py-2.5 font-medium">Importe</th>
+                    <th className="text-right px-3 py-2.5 font-medium">Devolución</th>
+                    <th className="text-right px-3 py-2.5 rounded-tr-lg font-medium">Neto</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {fJuliGastos.sort((a,b) => a.fecha.localeCompare(b.fecha)).map((r, i) => (
+                    <tr key={r.id} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                      <td className="px-3 py-2 text-gray-600">{r.fecha}</td>
+                      <td className="px-3 py-2 text-gray-700">{r.detalle || '-'}</td>
+                      <td className="px-3 py-2 text-gray-600">{r.modalidad_pago || '-'}</td>
+                      <td className="px-3 py-2 text-right text-red-700">{ars(r.importe)}</td>
+                      <td className="px-3 py-2 text-right text-green-700">{r.devolucion > 0 ? ars(r.devolucion) : '-'}</td>
+                      <td className="px-3 py-2 text-right font-semibold text-red-800">{ars((r.importe||0) - (r.devolucion||0))}</td>
+                    </tr>
+                  ))}
+                  <tr className="bg-slate-50 border-t-2 border-slate-200 font-semibold">
+                    <td colSpan={5} className="px-3 py-2.5">TOTAL neto Juli gastos</td>
+                    <td className="px-3 py-2.5 text-right text-red-700">{ars(juliGastos)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            )}
+          </Section>
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════ */}
+      {/*  TAB: RETIROS                                                     */}
+      {/* ════════════════════════════════════════════════════════════════ */}
+      {activeTab === 'retiros' && (
+        <div className="space-y-6">
+          <div className="grid sm:grid-cols-3 gap-4">
+            <SummaryCard label="Total retiro pesos" value={ars(totalRetiroPesos)} />
+            <SummaryCard label="Total retiro USD" value={usd(totalRetiroUSD)} />
+            <SummaryCard label="Movimientos de retiro" value={retiros.length} />
+          </div>
+
+          <Section title="Tabla de retiros del período">
+            {retiros.length === 0 ? (
+              <p className="text-gray-400 text-sm">Sin retiros en este período.</p>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-slate-800 text-white">
+                    <th className="text-left px-4 py-2.5 rounded-tl-lg font-medium">Fecha</th>
+                    <th className="text-left px-4 py-2.5 font-medium">Cuenta</th>
+                    <th className="text-left px-4 py-2.5 font-medium">Detalle</th>
+                    <th className="text-right px-4 py-2.5 font-medium">Retiro $</th>
+                    <th className="text-right px-4 py-2.5 rounded-tr-lg font-medium">Retiro USD</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {retiros.map((r, i) => (
+                    <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                      <td className="px-4 py-2.5 text-gray-600">{r.fecha}</td>
+                      <td className="px-4 py-2.5 text-gray-700">{r.cuenta}</td>
+                      <td className="px-4 py-2.5 text-gray-700">{r.detalle}</td>
+                      <td className="px-4 py-2.5 text-right font-semibold text-gray-800">{r.retiro_pesos > 0 ? ars(r.retiro_pesos) : '-'}</td>
+                      <td className="px-4 py-2.5 text-right font-semibold text-indigo-700">{r.retiro_dolares > 0 ? usd(r.retiro_dolares) : '-'}</td>
+                    </tr>
+                  ))}
+                  <tr className="bg-slate-50 border-t-2 border-slate-200 font-semibold">
+                    <td colSpan={3} className="px-4 py-2.5">TOTAL</td>
+                    <td className="px-4 py-2.5 text-right text-gray-800">{ars(totalRetiroPesos)}</td>
+                    <td className="px-4 py-2.5 text-right text-indigo-700">{usd(totalRetiroUSD)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            )}
+          </Section>
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════ */}
+      {/*  TAB: GRÁFICOS                                                    */}
+      {/* ════════════════════════════════════════════════════════════════ */}
+      {activeTab === 'graficos' && (
+        <div className="space-y-6">
+          {/* Bar chart: ingresos vs gastos por mes */}
+          <Section title={`Ingresos vs Gastos por mes — ${anio}`}>
+            <ResponsiveContainer width="100%" height={320}>
+              <BarChart data={monthlySeries} margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="mes" tick={{ fontSize: 12 }} />
+                <YAxis tick={{ fontSize: 11 }} tickFormatter={v => `$${(v/1000).toFixed(0)}k`} />
+                <Tooltip
+                  formatter={(val, name) => [ars(val), name]}
+                  contentStyle={{ borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12 }}
+                />
+                <Legend />
+                <Bar dataKey="Ingresos" fill="#22c55e" radius={[3,3,0,0]} />
+                <Bar dataKey="Gastos"   fill="#ef4444" radius={[3,3,0,0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </Section>
+
+          {/* Line chart: ganancia neta */}
+          <Section title={`Tendencia de ganancia neta — ${anio}`}>
+            <ResponsiveContainer width="100%" height={260}>
+              <LineChart data={monthlySeries} margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="mes" tick={{ fontSize: 12 }} />
+                <YAxis tick={{ fontSize: 11 }} tickFormatter={v => `$${(v/1000).toFixed(0)}k`} />
+                <Tooltip
+                  formatter={(val) => [ars(val), 'Ganancia neta']}
+                  contentStyle={{ borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12 }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="Ganancia"
+                  stroke="#3b82f6"
+                  strokeWidth={2.5}
+                  dot={{ fill: '#3b82f6', r: 4 }}
+                  activeDot={{ r: 6 }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </Section>
+
+          {/* Pie chart: distribución de gastos */}
+          <div className="grid md:grid-cols-2 gap-6">
+            <Section title="Distribución de gastos por categoría">
+              {pieData.length === 0 ? (
+                <p className="text-gray-400 text-sm">Sin gastos en el período seleccionado.</p>
+              ) : (
+                <ResponsiveContainer width="100%" height={300}>
+                  <PieChart>
+                    <Pie
+                      data={pieData}
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={110}
+                      dataKey="value"
+                      label={({ name, percent }) => `${name.length > 12 ? name.slice(0,12)+'…' : name} ${(percent*100).toFixed(0)}%`}
+                      labelLine={false}
+                      fontSize={10}
+                    >
+                      {pieData.map((_, idx) => (
+                        <Cell key={idx} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(val) => ars(val)} />
+                  </PieChart>
+                </ResponsiveContainer>
+              )}
+            </Section>
+
+            {/* Pie legend */}
+            <Section title="Detalle categorías">
+              <div className="space-y-2 max-h-72 overflow-y-auto">
+                {pieData.map(({ name, value }, idx) => (
+                  <div key={name} className="flex items-center justify-between text-sm">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="w-3 h-3 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: PIE_COLORS[idx % PIE_COLORS.length] }}
+                      />
+                      <span className="text-gray-700">{name}</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-gray-500 text-xs">{pct(value, gastoTotal)}</span>
+                      <span className="font-semibold text-red-700 w-28 text-right">{ars(value)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Section>
+          </div>
+
+          {/* Bar chart: ingresos por cabaña */}
+          <Section title="Ingresos por cabaña del período">
+            {porCabana.length === 0 ? (
+              <p className="text-gray-400 text-sm">Sin reservas en este período.</p>
+            ) : (
+              <ResponsiveContainer width="100%" height={280}>
+                <BarChart
+                  data={porCabana.slice(0, 15)}
+                  layout="vertical"
+                  margin={{ top: 5, right: 60, left: 90, bottom: 5 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
+                  <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={v => `$${(v/1000).toFixed(0)}k`} />
+                  <YAxis type="category" dataKey="cabana" tick={{ fontSize: 11 }} width={85} />
+                  <Tooltip formatter={(val) => [ars(val), 'Monto']} />
+                  <Bar dataKey="monto" fill="#3b82f6" radius={[0,3,3,0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </Section>
+        </div>
+      )}
+    </div>
+  )
+}
