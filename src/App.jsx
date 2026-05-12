@@ -9,6 +9,7 @@ import ReservaDetalle from './pages/ReservaDetalle'
 import Disponibilidad from './pages/Disponibilidad'
 import Caja from './pages/Caja'
 import Ganancias from './pages/Ganancias'
+import ReservaPago from './pages/ReservaPago'
 
 export default function App() {
   return (
@@ -25,6 +26,7 @@ export default function App() {
                     <Route path="/reservas"                element={<Reservas />} />
                     <Route path="/reservas/nueva"          element={<ReservaForm />} />
                     <Route path="/reservas/:id"            element={<ReservaDetalle />} />
+                    <Route path="/reservas/:id/pago"       element={<ReservaPago />} />
                     <Route path="/reservas/:id/editar"     element={<ReservaForm />} />
                     <Route path="/disponibilidad"          element={<Disponibilidad />} />
                     <Route path="/caja"                    element={<Caja />} />

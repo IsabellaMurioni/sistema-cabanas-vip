@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { format, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
+import { getCabanaColor } from '../lib/cabanas'
 
 const ESTADO_STYLES = {
   Pendiente:  'bg-yellow-100 text-yellow-800',
@@ -16,18 +17,30 @@ const MESES = [
   'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre',
 ]
 
+function CabanaBadge({ cabana }) {
+  return (
+    <span
+      className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold text-white"
+      style={{ backgroundColor: getCabanaColor(cabana) }}
+    >
+      {cabana}
+    </span>
+  )
+}
+
 function saldoRestante(r) {
-  const total = Number(r.monto_total || 0)
-  const pagado = Number(r.sena1_monto || 0) + Number(r.sena2_monto || 0) + Number(r.pago_cabana_monto || 0)
-  return total - pagado
+  return Number(r.monto_total || 0)
+    - Number(r.sena1_monto || 0)
+    - Number(r.sena2_monto || 0)
+    - Number(r.pago_cabana_monto || 0)
 }
 
 export default function Reservas() {
   const navigate = useNavigate()
-  const [reservas, setReservas] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState('')
-  const [filtroMes, setFiltroMes] = useState('')
+  const [reservas, setReservas]       = useState([])
+  const [loading, setLoading]         = useState(true)
+  const [search, setSearch]           = useState('')
+  const [filtroMes, setFiltroMes]     = useState('')
   const [filtroEstado, setFiltroEstado] = useState('')
 
   const fetchReservas = async () => {
@@ -48,17 +61,38 @@ export default function Reservas() {
     fetchReservas()
   }
 
-  const handleEliminar = async (id) => {
-    if (!confirm('¿Eliminar esta reserva? Esta acción no se puede deshacer.')) return
-    await supabase.from('reservas').delete().eq('id', id)
+  const handleEliminar = async (r) => {
+    const ok = confirm(
+      `¿Estás segura que querés eliminar esta reserva?\n\n` +
+      `${r.codigo} · ${r.nombre_apellido}\n\n` +
+      `Esta acción no se puede deshacer y borrará todos los registros asociados ` +
+      `(pagos, comprobantes y movimientos en Caja).`
+    )
+    if (!ok) return
+
+    // 1. Borrar comprobantes del storage
+    const paths = [r.sena1_comprobante, r.sena2_comprobante, r.pago_cabana_comprobante].filter(Boolean)
+    if (paths.length > 0) {
+      await supabase.storage.from('comprobantes').remove(paths)
+    }
+
+    // 2. Borrar movimientos de caja vinculados
+    await Promise.all([
+      supabase.from('caja_banco').delete().eq('reserva_codigo', r.codigo),
+      supabase.from('caja_mercado_pago').delete().eq('reserva_codigo', r.codigo),
+      supabase.from('caja_silvia').delete().ilike('detalle', `%${r.codigo}%`),
+    ])
+
+    // 3. Borrar la reserva
+    await supabase.from('reservas').delete().eq('id', r.id)
     fetchReservas()
   }
 
   const filtered = reservas.filter((r) => {
     const q = search.toLowerCase()
-    const matchSearch = !q || [r.codigo, r.nombre_apellido, r.cabana, r.celular]
+    const matchSearch = !q || [r.codigo, r.nombre_apellido, r.cabana, r.celular, r.email]
       .some((v) => v?.toLowerCase().includes(q))
-    const matchMes = !filtroMes || r.mes === filtroMes
+    const matchMes    = !filtroMes    || r.mes    === filtroMes
     const matchEstado = !filtroEstado || r.estado === filtroEstado
     return matchSearch && matchMes && matchEstado
   })
@@ -82,7 +116,7 @@ export default function Reservas() {
       <div className="flex flex-wrap gap-3 mb-4">
         <input
           type="text"
-          placeholder="Buscar por nombre, código o cabaña..."
+          placeholder="Buscar por nombre, código, email o cabaña..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="flex-1 min-w-48 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
@@ -138,20 +172,29 @@ export default function Reservas() {
             </thead>
             <tbody>
               {filtered.map((r) => {
-                const saldo = saldoRestante(r)
+                const saldo       = saldoRestante(r)
+                const finalizada  = r.estado === 'Finalizada'
+                const rowCls      = finalizada
+                  ? 'border-b last:border-0 bg-gray-50 opacity-70'
+                  : 'border-b last:border-0 hover:bg-gray-50'
+
                 return (
-                  <tr key={r.id} className="border-b last:border-0 hover:bg-gray-50">
-                    <td className="px-4 py-3 font-mono font-medium text-primary-700">{r.codigo}</td>
-                    <td className="px-4 py-3 font-medium">{r.nombre_apellido}</td>
-                    <td className="px-4 py-3">{r.cabana}</td>
-                    <td className="px-4 py-3 whitespace-nowrap">
+                  <tr key={r.id} className={rowCls}>
+                    <td className={`px-4 py-3 font-mono font-medium ${finalizada ? 'text-gray-400' : 'text-primary-700'}`}>
+                      {r.codigo}
+                    </td>
+                    <td className={`px-4 py-3 font-medium ${finalizada ? 'text-gray-400' : ''}`}>
+                      {r.nombre_apellido}
+                    </td>
+                    <td className="px-4 py-3"><CabanaBadge cabana={r.cabana} /></td>
+                    <td className="px-4 py-3 whitespace-nowrap text-gray-600">
                       {r.fecha_entrada ? format(parseISO(r.fecha_entrada), 'dd/MM/yyyy', { locale: es }) : '-'}
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
+                    <td className="px-4 py-3 whitespace-nowrap text-gray-600">
                       {r.fecha_salida ? format(parseISO(r.fecha_salida), 'dd/MM/yyyy', { locale: es }) : '-'}
                     </td>
-                    <td className="px-4 py-3 text-center">{r.noches ?? '-'}</td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3 text-center text-gray-600">{r.noches ?? '-'}</td>
+                    <td className="px-4 py-3 text-gray-700">
                       {r.monto_total ? `$${Number(r.monto_total).toLocaleString('es-AR')}` : '-'}
                     </td>
                     <td className={`px-4 py-3 font-medium ${saldo > 0 ? 'text-orange-600' : 'text-green-600'}`}>
@@ -163,7 +206,7 @@ export default function Reservas() {
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex gap-2 flex-wrap">
+                      <div className="flex gap-2 flex-wrap items-center">
                         <button
                           onClick={() => navigate(`/reservas/${r.id}`)}
                           className="text-primary-600 hover:text-primary-800 text-xs font-medium"
@@ -176,6 +219,12 @@ export default function Reservas() {
                         >
                           Editar
                         </button>
+                        <button
+                          onClick={() => navigate(`/reservas/${r.id}/pago`)}
+                          className="text-indigo-600 hover:text-indigo-800 text-xs font-medium"
+                        >
+                          Nuevo pago
+                        </button>
                         {r.estado !== 'Finalizada' && r.estado !== 'Cancelada' && (
                           <button
                             onClick={() => handleFinalizar(r.id)}
@@ -185,7 +234,7 @@ export default function Reservas() {
                           </button>
                         )}
                         <button
-                          onClick={() => handleEliminar(r.id)}
+                          onClick={() => handleEliminar(r)}
                           className="text-red-500 hover:text-red-700 text-xs font-medium"
                         >
                           Eliminar

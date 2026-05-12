@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { CABANAS } from '../lib/cabanas'
+import { CABANAS, getCabanaColor } from '../lib/cabanas'
 import {
   addDays, addMonths, subMonths, differenceInDays,
   startOfMonth, getDaysInMonth, getDay,
@@ -226,7 +226,7 @@ function TimelineRow({ cabana, reservas, startDate, endDate, height = 40, onRese
               width,
               top: height * 0.12,
               height: height * 0.76,
-              backgroundColor: '#1e40af',
+              backgroundColor: getCabanaColor(cabana),
               borderRadius,
               cursor: 'pointer',
               overflow: 'hidden',
@@ -265,11 +265,11 @@ function ReservaPopup({ reserva, onClose, onView }) {
         className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-5 py-4" style={{ backgroundColor: '#1e40af' }}>
+        <div className="px-5 py-4" style={{ backgroundColor: getCabanaColor(reserva.cabana) }}>
           <div className="flex items-start justify-between">
             <div>
               <p className="font-mono font-bold text-lg text-white">{reserva.codigo}</p>
-              <p className="text-blue-200 text-sm">{reserva.cabana}</p>
+              <p className="text-sm" style={{ color: 'rgba(255,255,255,0.7)' }}>{reserva.cabana}</p>
             </div>
             <span className={`text-xs px-2 py-1 rounded-full font-medium ${ESTADO_STYLES[reserva.estado] || 'bg-gray-100 text-gray-700'}`}>
               {reserva.estado}
@@ -335,7 +335,7 @@ function ReservaPopup({ reserva, onClose, onView }) {
           <button
             onClick={onView}
             className="flex-1 text-white rounded-lg py-2 text-sm font-medium transition-colors"
-            style={{ backgroundColor: '#1e40af' }}
+            style={{ backgroundColor: getCabanaColor(reserva.cabana) }}
           >
             Ver detalle
           </button>
@@ -453,8 +453,8 @@ export default function Disponibilidad() {
                 Libre
               </span>
               <span className="flex items-center gap-1.5">
-                <span className="w-3 h-3 rounded inline-block" style={{ backgroundColor: '#1e40af' }} />
-                Ocupado
+                <span className="w-3 h-3 rounded inline-block" style={{ background: 'linear-gradient(135deg, #1e3a5f, #db2777, #0ea5e9)' }} />
+                Ocupado (color por cabaña)
               </span>
               <span className="flex items-center gap-1.5">
                 <span className="w-0.5 h-3 inline-block rounded" style={{ backgroundColor: '#f97316' }} />
@@ -476,11 +476,14 @@ export default function Disponibilidad() {
                   className={`flex items-stretch border-b border-gray-100 last:border-0 ${ci % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'}`}
                 >
                   <div
-                    className="flex items-center px-3 gap-2 border-r border-gray-200 flex-shrink-0 cursor-pointer hover:bg-blue-50 transition-colors"
-                    style={{ width: 136 }}
+                    className="flex items-center px-3 gap-2 border-r border-gray-200 flex-shrink-0 cursor-pointer hover:bg-gray-100 transition-colors"
+                    style={{ width: 136, borderLeft: `3px solid ${getCabanaColor(cabana)}` }}
                     onClick={() => { setSelectedCabana(cabana); setShowAll(false) }}
                   >
-                    <span className={`w-2 h-2 rounded-full flex-shrink-0 ${st?.occupied ? 'bg-blue-600' : 'bg-green-400'}`} />
+                    <span
+                      className={`w-2 h-2 rounded-full flex-shrink-0 ${st?.occupied ? '' : 'bg-green-400'}`}
+                      style={st?.occupied ? { backgroundColor: getCabanaColor(cabana) } : {}}
+                    />
                     <span className="text-xs font-semibold text-gray-700 truncate">{cabana}</span>
                   </div>
                   <div className="overflow-hidden" style={{ width: numDays * DAY_W }}>
@@ -513,22 +516,26 @@ export default function Disponibilidad() {
                 <button
                   key={cabana}
                   onClick={() => setSelectedCabana(cabana)}
+                  style={selected ? {
+                    borderColor: getCabanaColor(cabana),
+                    borderLeftWidth: 3,
+                    backgroundColor: `${getCabanaColor(cabana)}14`,
+                  } : {}}
                   className={`w-full text-left px-3 py-2.5 rounded-xl border transition-all text-sm ${
                     selected
-                      ? 'border-blue-300 bg-blue-50 shadow-sm'
+                      ? 'shadow-sm'
                       : 'border-gray-100 bg-white hover:border-gray-200 hover:bg-gray-50'
                   }`}
                 >
                   <div className="flex items-center justify-between mb-0.5">
                     <span className="font-semibold text-gray-800">{cabana}</span>
                     <span
-                      className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
-                        st?.occupied ? 'bg-blue-600' : 'bg-green-400'
-                      }`}
+                      className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${st?.occupied ? '' : 'bg-green-400'}`}
+                      style={st?.occupied ? { backgroundColor: getCabanaColor(cabana) } : {}}
                     />
                   </div>
                   {st?.current ? (
-                    <p className="text-xs text-blue-700 truncate">
+                    <p className="text-xs truncate" style={{ color: getCabanaColor(cabana) }}>
                       {st.current.nombre_apellido.split(' ').slice(0, 2).join(' ')}
                     </p>
                   ) : st?.upcoming ? (
@@ -548,11 +555,21 @@ export default function Disponibilidad() {
             {selectedCabana ? (
               <>
                 {/* Header del panel */}
-                <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 bg-gray-50">
+                <div
+                  className="flex items-center justify-between px-5 py-3 border-b border-gray-200"
+                  style={{ backgroundColor: `${getCabanaColor(selectedCabana)}0d` }}
+                >
                   <div className="flex items-center gap-3">
+                    <div
+                      className="w-1 h-8 rounded-full flex-shrink-0"
+                      style={{ backgroundColor: getCabanaColor(selectedCabana) }}
+                    />
                     <div>
                       <h3 className="font-bold text-gray-800">{selectedCabana}</h3>
-                      <p className={`text-xs font-medium ${cabanaStatus[selectedCabana]?.occupied ? 'text-blue-600' : 'text-green-600'}`}>
+                      <p
+                        className="text-xs font-medium"
+                        style={{ color: cabanaStatus[selectedCabana]?.occupied ? getCabanaColor(selectedCabana) : '#16a34a' }}
+                      >
                         {cabanaStatus[selectedCabana]?.occupied ? 'Ocupada hoy' : 'Libre hoy'}
                       </p>
                     </div>
@@ -561,7 +578,7 @@ export default function Disponibilidad() {
                   {/* Leyenda */}
                   <div className="flex items-center gap-4 text-xs text-gray-500">
                     <span className="flex items-center gap-1">
-                      <span className="w-3 h-3 rounded inline-block" style={{ backgroundColor: '#1e40af' }} />
+                      <span className="w-3 h-3 rounded inline-block" style={{ backgroundColor: getCabanaColor(selectedCabana) }} />
                       Reserva
                     </span>
                     <span className="flex items-center gap-1">
@@ -607,7 +624,7 @@ export default function Disponibilidad() {
                           onClick={() => setPopup(r)}
                         >
                           <div className="flex items-center gap-2">
-                            <span className="font-mono text-xs text-blue-700 font-semibold">{r.codigo}</span>
+                            <span className="font-mono text-xs font-semibold" style={{ color: getCabanaColor(selectedCabana) }}>{r.codigo}</span>
                             <span className="text-gray-700 font-medium truncate">{r.nombre_apellido}</span>
                           </div>
                           <span className="text-xs text-gray-500 flex-shrink-0 ml-2">

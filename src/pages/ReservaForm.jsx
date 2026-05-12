@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { CABANAS } from '../lib/cabanas'
 import FileUpload from '../components/FileUpload'
+import { sendEmailConfirmacion } from '../lib/email'
 
 const MESES = [
   'Enero','Febrero','Marzo','Abril','Mayo','Junio',
@@ -12,6 +13,7 @@ const MESES = [
 const EMPTY_FORM = {
   codigo: '',
   nombre_apellido: '',
+  email: '',
   cuit_dni: '',
   direccion: '',
   celular: '',
@@ -98,6 +100,7 @@ export default function ReservaForm() {
           setForm({
             codigo: data.codigo ?? '',
             nombre_apellido: data.nombre_apellido ?? '',
+            email: data.email ?? '',
             cuit_dni: data.cuit_dni ?? '',
             direccion: data.direccion ?? '',
             celular: data.celular ?? '',
@@ -164,6 +167,7 @@ export default function ReservaForm() {
     const payload = {
       codigo: form.codigo,
       nombre_apellido: form.nombre_apellido,
+      email: form.email || null,
       cuit_dni: form.cuit_dni || null,
       direccion: form.direccion || null,
       celular: form.celular || null,
@@ -190,6 +194,9 @@ export default function ReservaForm() {
       pago_cabana_comprobante: form.pago_cabana_comprobante || null,
       estado: form.estado,
       observaciones: form.observaciones || null,
+      fecha_vencimiento: !isEdit && form.estado === 'Pendiente'
+        ? new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString()
+        : undefined,
     }
 
     let err
@@ -197,6 +204,57 @@ export default function ReservaForm() {
       ({ error: err } = await supabase.from('reservas').update(payload).eq('id', id))
     } else {
       ({ error: err } = await supabase.from('reservas').insert(payload))
+
+      if (!err) {
+        const hoy = new Date().toISOString().slice(0, 10)
+        const cajaOps = []
+
+        if (Number(form.sena1_monto) > 0) {
+          const tabla = form.sena1_tipo === 'Mercado Pago' ? 'caja_mercado_pago' : 'caja_banco'
+          cajaOps.push(supabase.from(tabla).insert({
+            fecha:          form.sena1_fecha || hoy,
+            detalle:        `1ª Seña · ${form.codigo} - ${form.nombre_apellido}`,
+            reserva_codigo: form.codigo,
+            reserva_nombre: form.nombre_apellido,
+            ingreso:        Number(form.sena1_monto),
+            egreso:         0,
+          }))
+        }
+
+        if (Number(form.sena2_monto) > 0) {
+          const tabla = form.sena2_tipo === 'Mercado Pago' ? 'caja_mercado_pago' : 'caja_banco'
+          cajaOps.push(supabase.from(tabla).insert({
+            fecha:          form.sena2_fecha || hoy,
+            detalle:        `2ª Seña · ${form.codigo} - ${form.nombre_apellido}`,
+            reserva_codigo: form.codigo,
+            reserva_nombre: form.nombre_apellido,
+            ingreso:        Number(form.sena2_monto),
+            egreso:         0,
+          }))
+        }
+
+        if (Number(form.pago_cabana_monto) > 0) {
+          cajaOps.push(supabase.from('caja_silvia').insert({
+            fecha:           form.pago_cabana_fecha || hoy,
+            cuenta:          'Alquiler',
+            detalle:         `Pago en cabaña · ${form.codigo} - ${form.nombre_apellido}`,
+            ingreso_pesos:   Number(form.pago_cabana_monto),
+            ingreso_dolares: 0,
+            ingreso_juli:    0,
+            gasto:           0,
+            retiro_pesos:    0,
+            retiro_dolares:  0,
+          }))
+        }
+
+        if (cajaOps.length > 0) await Promise.all(cajaOps)
+
+        // Email 1 — confirmación (solo para reservas Pendiente con email)
+        if (form.estado === 'Pendiente' && form.email) {
+          sendEmailConfirmacion({ ...form, noches: calcNoches(form.fecha_entrada, form.fecha_salida) })
+            .catch((e) => console.error('Email confirmación:', e.message))
+        }
+      }
     }
 
     setSaving(false)
@@ -246,6 +304,16 @@ export default function ReservaForm() {
                 />
               </Field>
             </div>
+            <Field label="Email del cliente" required>
+              <input
+                type="email"
+                value={form.email}
+                onChange={(e) => set('email', e.target.value)}
+                required
+                className={inputClass}
+                placeholder="ejemplo@gmail.com"
+              />
+            </Field>
             <Field label="CUIT / DNI">
               <input
                 type="text"
@@ -407,23 +475,16 @@ export default function ReservaForm() {
                   <option>Mercado Pago</option>
                 </select>
               </Field>
-              <Field label="Fecha">
-                <input
-                  type="date"
-                  value={form.sena1_fecha}
-                  onChange={(e) => set('sena1_fecha', e.target.value)}
-                  className={inputClass}
-                />
-              </Field>
-              <Field label="Nº de recibo">
-                <input
-                  type="text"
-                  value={form.sena1_recibo}
-                  onChange={(e) => set('sena1_recibo', e.target.value)}
-                  className={inputClass}
-                  placeholder="Ej: 00123"
-                />
-              </Field>
+              <div className="col-span-2">
+                <Field label="Fecha">
+                  <input
+                    type="date"
+                    value={form.sena1_fecha}
+                    onChange={(e) => set('sena1_fecha', e.target.value)}
+                    className={inputClass}
+                  />
+                </Field>
+              </div>
               <div className="col-span-2">
                 <FileUpload
                   label="Comprobante (foto o PDF)"
@@ -458,23 +519,16 @@ export default function ReservaForm() {
                   <option>Mercado Pago</option>
                 </select>
               </Field>
-              <Field label="Fecha">
-                <input
-                  type="date"
-                  value={form.sena2_fecha}
-                  onChange={(e) => set('sena2_fecha', e.target.value)}
-                  className={inputClass}
-                />
-              </Field>
-              <Field label="Nº de recibo">
-                <input
-                  type="text"
-                  value={form.sena2_recibo}
-                  onChange={(e) => set('sena2_recibo', e.target.value)}
-                  className={inputClass}
-                  placeholder="Ej: 00124"
-                />
-              </Field>
+              <div className="col-span-2">
+                <Field label="Fecha">
+                  <input
+                    type="date"
+                    value={form.sena2_fecha}
+                    onChange={(e) => set('sena2_fecha', e.target.value)}
+                    className={inputClass}
+                  />
+                </Field>
+              </div>
               <div className="col-span-2">
                 <FileUpload
                   label="Comprobante (foto o PDF)"
@@ -507,16 +561,6 @@ export default function ReservaForm() {
                   className={inputClass}
                 />
               </Field>
-              <Field label="Nº de recibo">
-                <input
-                  type="text"
-                  value={form.pago_cabana_recibo}
-                  onChange={(e) => set('pago_cabana_recibo', e.target.value)}
-                  className={inputClass}
-                  placeholder="Ej: 00125"
-                />
-              </Field>
-              <div />
               <div className="col-span-2">
                 <FileUpload
                   label="Comprobante (foto o PDF)"

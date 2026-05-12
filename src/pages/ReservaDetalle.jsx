@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { format, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { getPublicUrl } from '../components/FileUpload'
+import { sendEmailRecibo } from '../lib/email'
 
 const ESTADO_STYLES = {
   Pendiente:  'bg-yellow-100 text-yellow-800',
@@ -59,16 +60,56 @@ function Comprobante({ path, label }) {
   )
 }
 
-function PagoCard({ titulo, monto, tipo, fecha, recibo, comprobante }) {
+function PagoCard({ titulo, monto, tipo, fecha, comprobante, reserva, saldo }) {
   if (!monto && !comprobante) return null
+
+  const [sending, setSending] = useState(false)
+  const [sent, setSent] = useState(false)
+  const [emailErr, setEmailErr] = useState('')
+
+  const handleEmailRecibo = async () => {
+    if (!reserva?.email) { setEmailErr('El cliente no tiene email registrado'); return }
+    if (!monto || Number(monto) <= 0) { setEmailErr('Sin monto registrado'); return }
+    setSending(true)
+    setEmailErr('')
+    try {
+      const total_pagado = Number(reserva.monto_total || 0) - Number(saldo || 0)
+      await sendEmailRecibo(reserva, { titulo, monto: Number(monto), fecha, tipo, total_pagado, saldo: Number(saldo || 0) })
+      setSent(true)
+      setTimeout(() => setSent(false), 4000)
+    } catch (e) {
+      setEmailErr(e.message)
+    } finally {
+      setSending(false)
+    }
+  }
+
   return (
     <div className="border border-gray-200 rounded-lg p-4">
-      <p className="text-sm font-semibold text-gray-700 mb-3">{titulo}</p>
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-sm font-semibold text-gray-700">{titulo}</p>
+        <div className="flex flex-col items-end gap-1">
+          {sent ? (
+            <span className="text-xs text-green-600 font-medium flex items-center gap-1">
+              <span>✓</span> Email enviado
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={handleEmailRecibo}
+              disabled={sending}
+              className="text-xs text-blue-600 border border-blue-200 rounded-lg px-3 py-1.5 hover:bg-blue-50 flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              <span>✉</span> {sending ? 'Enviando...' : 'Enviar recibo por email'}
+            </button>
+          )}
+          {emailErr && <p className="text-xs text-red-500">{emailErr}</p>}
+        </div>
+      </div>
       <div className="grid grid-cols-2 gap-x-8 gap-y-1 mb-3">
         <DataRow label="Monto" value={money(monto)} />
         {tipo && <DataRow label="Tipo" value={tipo} />}
         <DataRow label="Fecha" value={fmt(fecha)} />
-        <DataRow label="Nº recibo" value={recibo} />
       </div>
       <div>
         <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Comprobante</p>
@@ -155,6 +196,7 @@ export default function ReservaDetalle() {
             Información del huésped
           </h3>
           <DataRow label="Nombre y apellido" value={reserva.nombre_apellido} />
+          <DataRow label="Email" value={reserva.email} />
           <DataRow label="CUIT / DNI" value={reserva.cuit_dni} />
           <DataRow label="Celular" value={reserva.celular} />
           <DataRow label="Dirección" value={reserva.direccion} />
@@ -216,24 +258,27 @@ export default function ReservaDetalle() {
                 monto={reserva.sena1_monto}
                 tipo={reserva.sena1_tipo}
                 fecha={reserva.sena1_fecha}
-                recibo={reserva.sena1_recibo}
                 comprobante={reserva.sena1_comprobante}
+                reserva={reserva}
+                saldo={saldo}
               />
               <PagoCard
                 titulo="2ª Seña"
                 monto={reserva.sena2_monto}
                 tipo={reserva.sena2_tipo}
                 fecha={reserva.sena2_fecha}
-                recibo={reserva.sena2_recibo}
                 comprobante={reserva.sena2_comprobante}
+                reserva={reserva}
+                saldo={saldo}
               />
               <PagoCard
                 titulo="Pago en cabaña"
                 monto={reserva.pago_cabana_monto}
                 tipo={null}
                 fecha={reserva.pago_cabana_fecha}
-                recibo={reserva.pago_cabana_recibo}
                 comprobante={reserva.pago_cabana_comprobante}
+                reserva={reserva}
+                saldo={saldo}
               />
             </div>
           </div>
