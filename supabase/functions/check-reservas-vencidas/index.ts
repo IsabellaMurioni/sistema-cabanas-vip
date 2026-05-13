@@ -1,11 +1,12 @@
+// @ts-nocheck — Deno runtime; los tipos de Node/TS no aplican aquí
 // Supabase Edge Function — check-reservas-vencidas
-// Cancels expired Pendiente reservations and sends Email 3 (vencimiento) via EmailJS REST API.
+// Cancels expired Pendiente reservations and sends Email 3 (cancelacion) via EmailJS REST API.
 // Called hourly by pg_cron (see supabase-emails.sql).
 // Deploy: supabase functions deploy check-reservas-vencidas
 //
 // Required secrets (supabase secrets set):
 //   EMAILJS_SERVICE_ID=service_xxxxxxx
-//   EMAILJS_TEMPLATE_CANCELLED_ID=template_xxxxxxx
+//   EMAILJS_TEMPLATE_ID=template_xxxxxxx
 //   EMAILJS_PUBLIC_KEY=xxxxxxxxxxxxxxxxxxxxxx
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
@@ -21,11 +22,16 @@ async function sendVencimientoEmail(email: string, nombre: string, codigo: strin
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       service_id:      Deno.env.get('EMAILJS_SERVICE_ID'),
-      template_id:     Deno.env.get('EMAILJS_TEMPLATE_CANCELLED_ID'),
+      template_id:     Deno.env.get('EMAILJS_TEMPLATE_ID'),
       user_id:         Deno.env.get('EMAILJS_PUBLIC_KEY'),
       template_params: {
-        to_email: email,
-        to_name:  nombre,
+        asunto:              `Reserva N° ${codigo} dada de baja — Cabañas VIP`,
+        to_email:            email,
+        to_name:             nombre,
+        mensaje_intro:       'Le informamos que habiendo transcurrido el plazo de pago de la seña, su reserva ha sido dada de baja.',
+        bloque_confirmacion: false,
+        bloque_recibo:       false,
+        bloque_cancelacion:  true,
         codigo,
       },
     }),
