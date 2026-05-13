@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { CABANAS } from '../lib/cabanas'
 import FileUpload from '../components/FileUpload'
-import { sendEmailConfirmacion } from '../lib/email'
+import { sendEmailConfirmacion, sendEmailRecibo } from '../lib/email'
 
 const MESES = [
   'Enero','Febrero','Marzo','Abril','Mayo','Junio',
@@ -90,6 +90,9 @@ export default function ReservaForm() {
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(isEdit)
   const [error, setError] = useState('')
+  const [precioNoche, setPrecioNoche] = useState(null)
+  const [precioNombrePeriodo, setPrecioNombrePeriodo] = useState('')
+  const [montoModificado, setMontoModificado] = useState(false)
 
   const set = (field, value) => setForm((f) => ({ ...f, [field]: value }))
 
@@ -135,6 +138,35 @@ export default function ReservaForm() {
       fetchNextCode().then((codigo) => set('codigo', codigo))
     }
   }, [id, isEdit])
+
+  // Auto-calcular monto_total al crear (no al editar)
+  useEffect(() => {
+    if (isEdit) return
+    if (!form.fecha_entrada || !form.noches || form.noches <= 0) {
+      setPrecioNoche(null)
+      setPrecioNombrePeriodo('')
+      set('monto_total', '')
+      return
+    }
+    supabase
+      .from('precios')
+      .select('nombre, precio_noche')
+      .lte('fecha_inicio', form.fecha_entrada)
+      .gte('fecha_fin', form.fecha_entrada)
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data) {
+          setPrecioNoche(data.precio_noche)
+          setPrecioNombrePeriodo(data.nombre)
+          set('monto_total', String(Math.round(form.noches * data.precio_noche)))
+        } else {
+          setPrecioNoche(null)
+          setPrecioNombrePeriodo('')
+          set('monto_total', '')
+        }
+      })
+  }, [form.fecha_entrada, form.noches, isEdit])
 
   const handleFechaEntrada = (value) => {
     const noches = calcNoches(value, form.fecha_salida)
@@ -194,18 +226,23 @@ export default function ReservaForm() {
       pago_cabana_comprobante: form.pago_cabana_comprobante || null,
       estado: form.estado,
       observaciones: form.observaciones || null,
-      fecha_vencimiento: !isEdit && form.estado === 'Pendiente'
-        ? new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString()
-        : undefined,
     }
 
     let err
+    let newReserva = null
+
     if (isEdit) {
       ({ error: err } = await supabase.from('reservas').update(payload).eq('id', id))
     } else {
-      ({ error: err } = await supabase.from('reservas').insert(payload))
+      const { data: inserted, error: insertErr } = await supabase
+        .from('reservas')
+        .insert(payload)
+        .select('id, codigo, nombre_apellido, email, cabana, pax, fecha_entrada, fecha_salida, noches, monto_total, sena1_monto, sena1_tipo, sena1_fecha, estado')
+        .single()
+      err = insertErr
+      newReserva = inserted
 
-      if (!err) {
+      if (!err && newReserva) {
         const hoy = new Date().toISOString().slice(0, 10)
         const cajaOps = []
 
@@ -248,12 +285,6 @@ export default function ReservaForm() {
         }
 
         if (cajaOps.length > 0) await Promise.all(cajaOps)
-
-        // Email 1 — confirmación (solo para reservas Pendiente con email)
-        if (form.estado === 'Pendiente' && form.email) {
-          sendEmailConfirmacion({ ...form, noches: calcNoches(form.fecha_entrada, form.fecha_salida) })
-            .catch((e) => console.error('Email confirmación:', e.message))
-        }
       }
     }
 
@@ -261,8 +292,43 @@ export default function ReservaForm() {
 
     if (err) {
       setError('Error al guardar: ' + err.message)
-    } else {
-      navigate('/reservas')
+      return
+    }
+
+    navigate('/reservas')
+
+    if (newReserva) {
+      console.log('[ReservaForm] Reserva creada, disparando email. Estado:', form.estado, '| Email:', form.email)
+      if (form.estado === 'Pendiente' && form.email) {
+        console.log('[ReservaForm] → Enviando email de confirmación...')
+        sendEmailConfirmacion(newReserva)
+          .then(async (sentAt) => {
+            console.log('[ReservaForm] Email confirmación OK, sentAt:', sentAt)
+            if (sentAt) {
+              await supabase.from('reservas').update({
+                email_confirmacion_enviado_at: sentAt,
+                fecha_vencimiento: new Date(new Date(sentAt).getTime() + 48 * 60 * 60 * 1000).toISOString(),
+              }).eq('id', newReserva.id)
+            }
+          })
+          .catch((e) => console.error('[ReservaForm] Email confirmación ERROR:', e))
+      } else if (form.estado === 'Confirmada' && form.email && Number(form.sena1_monto) > 0) {
+        console.log('[ReservaForm] → Enviando email de recibo...')
+        const total_pagado = Number(form.sena1_monto || 0) + Number(form.sena2_monto || 0)
+        const saldoEmail = Number(form.monto_total || 0) - total_pagado
+        sendEmailRecibo(newReserva, {
+          titulo: '1ª Seña',
+          monto: Number(form.sena1_monto),
+          fecha: form.sena1_fecha,
+          tipo: form.sena1_tipo,
+          total_pagado,
+          saldo: saldoEmail,
+        })
+          .then(() => console.log('[ReservaForm] Email recibo OK'))
+          .catch((e) => console.error('[ReservaForm] Email recibo ERROR:', e))
+      } else {
+        console.log('[ReservaForm] No se envía email. Estado:', form.estado, '| Tiene email:', !!form.email, '| Seña1:', form.sena1_monto)
+      }
     }
   }
 
@@ -428,14 +494,41 @@ export default function ReservaForm() {
               />
             </Field>
             <Field label="Monto total ($)">
-              <input
-                type="number"
-                min={0}
-                value={form.monto_total}
-                onChange={(e) => set('monto_total', e.target.value)}
-                className={inputClass}
-                placeholder="0"
-              />
+              {isEdit ? (
+                <div className="relative">
+                  <input
+                    type="number"
+                    min={0}
+                    value={form.monto_total}
+                    onChange={(e) => { set('monto_total', e.target.value); setMontoModificado(true) }}
+                    className={inputClass}
+                    placeholder="0"
+                  />
+                  {montoModificado && (
+                    <span className="absolute right-2 top-1/2 -translate-y-1/2 bg-orange-100 text-orange-700 text-xs font-medium px-2 py-0.5 rounded-full pointer-events-none">
+                      Precio personalizado
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <div className={`${inputClass} bg-gray-50 text-gray-700 font-medium`}>
+                    {form.monto_total
+                      ? `$${Number(form.monto_total).toLocaleString('es-AR')}`
+                      : '—'}
+                  </div>
+                  {precioNoche && form.noches > 0 && (
+                    <p className="text-xs text-gray-400 mt-1">
+                      {form.noches} noches × ${Number(precioNoche).toLocaleString('es-AR')}/noche · {precioNombrePeriodo}
+                    </p>
+                  )}
+                  {!precioNoche && form.fecha_entrada && (
+                    <p className="text-xs text-orange-500 mt-1">
+                      Sin precio configurado para estas fechas. Cargá un período en Precios.
+                    </p>
+                  )}
+                </>
+              )}
             </Field>
             <Field label="Saldo restante ($)">
               <div className={`${inputClass} ${saldo > 0 ? 'bg-orange-50 text-orange-700 border-orange-200' : 'bg-green-50 text-green-700 border-green-200'} font-medium`}>

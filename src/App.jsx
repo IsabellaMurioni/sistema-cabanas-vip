@@ -10,6 +10,7 @@ import Disponibilidad from './pages/Disponibilidad'
 import Caja from './pages/Caja'
 import Ganancias from './pages/Ganancias'
 import ReservaPago from './pages/ReservaPago'
+import Precios from './pages/Precios'
 
 export default function App() {
   return (
@@ -31,6 +32,7 @@ export default function App() {
                     <Route path="/disponibilidad"          element={<Disponibilidad />} />
                     <Route path="/caja"                    element={<Caja />} />
                     <Route path="/ganancias"               element={<Ganancias />} />
+                    <Route path="/precios"                 element={<Precios />} />
                     <Route path="*"                        element={<Navigate to="/reservas" replace />} />
                   </Routes>
                 </Layout>

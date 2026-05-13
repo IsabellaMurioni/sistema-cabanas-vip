@@ -6,6 +6,7 @@ const NAV_ITEMS = [
   { to: '/disponibilidad', label: 'Disponibilidad' },
   { to: '/caja', label: 'Caja' },
   { to: '/ganancias', label: 'Ganancias' },
+  { to: '/precios', label: 'Precios' },
 ]
 
 export default function Layout({ children }) {

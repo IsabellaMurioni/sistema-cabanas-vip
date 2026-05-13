@@ -2,8 +2,6 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import FileUpload from '../components/FileUpload'
-import { sendEmailRecibo } from '../lib/email'
-
 const ic = 'w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-gray-50 disabled:text-gray-500'
 
 function Field({ label, children }) {
@@ -15,61 +13,19 @@ function Field({ label, children }) {
   )
 }
 
-function EmailBtn({ reserva, titulo, pago, pagado, saldo }) {
-  const [sending, setSending] = useState(false)
-  const [sent, setSent] = useState(false)
-  const [err, setErr] = useState('')
-
-  const handleSend = async () => {
-    if (!reserva?.email) { setErr('El cliente no tiene email registrado'); return }
-    if (!pago.monto || Number(pago.monto) <= 0) { setErr('Sin monto registrado'); return }
-    setSending(true)
-    setErr('')
-    try {
-      await sendEmailRecibo(reserva, {
-        titulo,
-        monto:        Number(pago.monto),
-        fecha:        pago.fecha,
-        tipo:         pago.tipo,
-        total_pagado: pagado,
-        saldo,
-      })
-      setSent(true)
-      setTimeout(() => setSent(false), 4000)
-    } catch (e) {
-      setErr(e.message)
-    } finally {
-      setSending(false)
-    }
-  }
-
-  return (
-    <div className="flex flex-col items-end gap-1">
-      {sent ? (
-        <span className="text-xs text-green-600 font-medium flex items-center gap-1">
-          <span>✓</span> Email enviado
-        </span>
-      ) : (
-        <button
-          type="button"
-          onClick={handleSend}
-          disabled={sending}
-          className="text-xs text-blue-600 border border-blue-200 rounded-lg px-3 py-1.5 hover:bg-blue-50 flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-        >
-          <span>✉</span> {sending ? 'Enviando...' : 'Enviar recibo por email'}
-        </button>
-      )}
-      {err && <p className="text-xs text-red-500">{err}</p>}
-    </div>
-  )
-}
-
-function PagoSection({ titulo, fields, set, reserva, pagado, saldo }) {
+function PagoSection({ titulo, fields, set }) {
   return (
     <div className="bg-white rounded-xl shadow p-6">
       <div className="flex items-center justify-between mb-4">
         <p className="text-sm font-semibold text-gray-700">{titulo}</p>
-        <EmailBtn reserva={reserva} titulo={titulo} pago={fields} pagado={pagado} saldo={saldo} />
+        <button
+          type="button"
+          disabled
+          title="Próximamente disponible"
+          className="text-xs text-gray-400 border border-gray-200 rounded-lg px-3 py-1.5 cursor-not-allowed opacity-60 flex items-center gap-1.5"
+        >
+          <span>✉</span> Enviar recibo por email
+        </button>
       </div>
       <div className="grid grid-cols-2 gap-4">
         <Field label="Monto ($)">
@@ -223,30 +179,9 @@ export default function ReservaPago() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-5">
-        <PagoSection
-          titulo="1ª Seña"
-          fields={sena1}
-          set={setter(setSena1)}
-          reserva={reserva}
-          pagado={pagado}
-          saldo={saldo}
-        />
-        <PagoSection
-          titulo="2ª Seña"
-          fields={sena2}
-          set={setter(setSena2)}
-          reserva={reserva}
-          pagado={pagado}
-          saldo={saldo}
-        />
-        <PagoSection
-          titulo="Pago en cabaña"
-          fields={cabana}
-          set={setter(setCabana)}
-          reserva={reserva}
-          pagado={pagado}
-          saldo={saldo}
-        />
+        <PagoSection titulo="1ª Seña"      fields={sena1}  set={setter(setSena1)} />
+        <PagoSection titulo="2ª Seña"      fields={sena2}  set={setter(setSena2)} />
+        <PagoSection titulo="Pago en cabaña" fields={cabana} set={setter(setCabana)} />
 
         {error && (
           <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm">

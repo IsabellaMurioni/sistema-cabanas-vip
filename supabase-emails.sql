@@ -2,9 +2,12 @@
 -- PARTE 1 — Schema (ejecutar ahora, sin prerrequisitos)
 -- ============================================================
 
--- Agrega campo de vencimiento a reservas
+-- Agrega campos de email a reservas
 ALTER TABLE reservas
   ADD COLUMN IF NOT EXISTS fecha_vencimiento timestamptz;
+
+ALTER TABLE reservas
+  ADD COLUMN IF NOT EXISTS email_confirmacion_enviado_at timestamptz;
 
 -- Tabla de logs de email
 CREATE TABLE IF NOT EXISTS email_logs (

@@ -26,8 +26,8 @@ async function sendVencimientoEmail(email: string, nombre: string, codigo: strin
       user_id:         Deno.env.get('EMAILJS_PUBLIC_KEY'),
       template_params: {
         asunto:              `Reserva N° ${codigo} dada de baja — Cabañas VIP`,
-        to_email:            email,
-        to_name:             nombre,
+        email_destino:       email,
+        nombre_cliente:      nombre,
         mensaje_intro:       'Le informamos que habiendo transcurrido el plazo de pago de la seña, su reserva ha sido dada de baja.',
         bloque_confirmacion: false,
         bloque_recibo:       false,

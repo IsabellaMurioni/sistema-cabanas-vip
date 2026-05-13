@@ -4,7 +4,6 @@ import { supabase } from '../lib/supabase'
 import { format, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { getPublicUrl } from '../components/FileUpload'
-import { sendEmailRecibo } from '../lib/email'
 
 const ESTADO_STYLES = {
   Pendiente:  'bg-yellow-100 text-yellow-800',
@@ -60,51 +59,21 @@ function Comprobante({ path, label }) {
   )
 }
 
-function PagoCard({ titulo, monto, tipo, fecha, comprobante, reserva, saldo }) {
+function PagoCard({ titulo, monto, tipo, fecha, comprobante }) {
   if (!monto && !comprobante) return null
-
-  const [sending, setSending] = useState(false)
-  const [sent, setSent] = useState(false)
-  const [emailErr, setEmailErr] = useState('')
-
-  const handleEmailRecibo = async () => {
-    if (!reserva?.email) { setEmailErr('El cliente no tiene email registrado'); return }
-    if (!monto || Number(monto) <= 0) { setEmailErr('Sin monto registrado'); return }
-    setSending(true)
-    setEmailErr('')
-    try {
-      const total_pagado = Number(reserva.monto_total || 0) - Number(saldo || 0)
-      await sendEmailRecibo(reserva, { titulo, monto: Number(monto), fecha, tipo, total_pagado, saldo: Number(saldo || 0) })
-      setSent(true)
-      setTimeout(() => setSent(false), 4000)
-    } catch (e) {
-      setEmailErr(e.message)
-    } finally {
-      setSending(false)
-    }
-  }
 
   return (
     <div className="border border-gray-200 rounded-lg p-4">
       <div className="flex items-center justify-between mb-3">
         <p className="text-sm font-semibold text-gray-700">{titulo}</p>
-        <div className="flex flex-col items-end gap-1">
-          {sent ? (
-            <span className="text-xs text-green-600 font-medium flex items-center gap-1">
-              <span>✓</span> Email enviado
-            </span>
-          ) : (
-            <button
-              type="button"
-              onClick={handleEmailRecibo}
-              disabled={sending}
-              className="text-xs text-blue-600 border border-blue-200 rounded-lg px-3 py-1.5 hover:bg-blue-50 flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              <span>✉</span> {sending ? 'Enviando...' : 'Enviar recibo por email'}
-            </button>
-          )}
-          {emailErr && <p className="text-xs text-red-500">{emailErr}</p>}
-        </div>
+        <button
+          type="button"
+          disabled
+          title="Próximamente disponible"
+          className="text-xs text-gray-400 border border-gray-200 rounded-lg px-3 py-1.5 cursor-not-allowed opacity-60 flex items-center gap-1.5"
+        >
+          <span>✉</span> Enviar recibo por email
+        </button>
       </div>
       <div className="grid grid-cols-2 gap-x-8 gap-y-1 mb-3">
         <DataRow label="Monto" value={money(monto)} />
@@ -259,8 +228,6 @@ export default function ReservaDetalle() {
                 tipo={reserva.sena1_tipo}
                 fecha={reserva.sena1_fecha}
                 comprobante={reserva.sena1_comprobante}
-                reserva={reserva}
-                saldo={saldo}
               />
               <PagoCard
                 titulo="2ª Seña"
@@ -268,8 +235,6 @@ export default function ReservaDetalle() {
                 tipo={reserva.sena2_tipo}
                 fecha={reserva.sena2_fecha}
                 comprobante={reserva.sena2_comprobante}
-                reserva={reserva}
-                saldo={saldo}
               />
               <PagoCard
                 titulo="Pago en cabaña"
@@ -277,8 +242,6 @@ export default function ReservaDetalle() {
                 tipo={null}
                 fecha={reserva.pago_cabana_fecha}
                 comprobante={reserva.pago_cabana_comprobante}
-                reserva={reserva}
-                saldo={saldo}
               />
             </div>
           </div>
