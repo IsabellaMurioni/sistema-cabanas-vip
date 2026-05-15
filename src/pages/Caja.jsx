@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+﻿import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import FileUpload, { getPublicUrl } from '../components/FileUpload'
 import { format, parseISO, getMonth, getYear } from 'date-fns'
@@ -42,18 +42,18 @@ const AMOUNT_CL = {
   retiro:           'text-orange-600 font-semibold',
 }
 
-const ic = 'w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400'
-const sc = 'border border-gray-200 rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-400 text-gray-700'
+const ic = 'field'
+const sc = 'field w-auto'
 
 // ─── UI atoms ──────────────────────────────────────────────
 
 function BigTotals({ items }) {
   return (
-    <div className="bg-slate-800 rounded-2xl px-8 py-5 mb-4 flex flex-wrap items-center justify-around gap-6">
+    <div className="flex flex-wrap gap-4 mb-5">
       {items.map((item, i) => (
-        <div key={i} className="text-center">
-          <p className="text-slate-400 text-xs font-medium uppercase tracking-wide mb-1">{item.label}</p>
-          <p className="text-white text-3xl font-semibold tabular-nums">{item.value}</p>
+        <div key={i} className="flex-1 min-w-[200px] bg-[#d1fae5] border border-green-200 rounded-[16px] px-8 py-6 text-center">
+          <p className="text-xs font-semibold text-[#065f46] uppercase tracking-widest mb-2">{item.label}</p>
+          <p className="text-[#065f46] text-[32px] font-bold tabular-nums leading-none">{item.value}</p>
         </div>
       ))}
     </div>
@@ -61,12 +61,12 @@ function BigTotals({ items }) {
 }
 
 function StatCards({ items }) {
-  const colorText = { green: 'text-green-700', red: 'text-red-600', orange: 'text-orange-600', blue: 'text-blue-700', neutral: 'text-slate-700' }
+  const colorText = { green: 'text-green-600', red: 'text-red-500', orange: 'text-orange-500', blue: 'text-blue-600', neutral: 'text-[#444]' }
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-5">
       {items.map((item, i) => (
-        <div key={i} className="bg-white border border-gray-200 rounded-xl px-4 py-3 shadow-sm">
-          <p className="text-xs text-gray-400 font-medium mb-1">{item.label}</p>
+        <div key={i} className="bg-[#fee7ef] border border-[#f0e6d8] rounded-[12px] px-4 py-4">
+          <p className="section-label mb-2">{item.label}</p>
           <p className={`text-base font-semibold tabular-nums ${colorText[item.color] || colorText.neutral}`}>
             {item.value}
           </p>
@@ -81,23 +81,20 @@ function FilterRow({ mes, anio, onMes, onAnio, onAdd, addLabel, children }) {
     <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
       <div className="flex flex-wrap items-end gap-2">
         <div>
-          <label className="text-xs text-gray-400 block mb-1 font-medium">Mes</label>
+          <label className="section-label block mb-1">Mes</label>
           <select value={mes} onChange={e => onMes(Number(e.target.value))} className={sc}>
             {MESES.map((m, i) => <option key={i} value={i}>{m}</option>)}
           </select>
         </div>
         <div>
-          <label className="text-xs text-gray-400 block mb-1 font-medium">Año</label>
+          <label className="section-label block mb-1">Año</label>
           <select value={anio} onChange={e => onAnio(Number(e.target.value))} className={sc}>
             {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
           </select>
         </div>
         {children}
       </div>
-      <button
-        onClick={onAdd}
-        className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm"
-      >
+      <button onClick={onAdd} className="btn-primary">
         {addLabel || '+ Nuevo movimiento'}
       </button>
     </div>
@@ -122,7 +119,7 @@ function Td({ children, right, cls, title }) {
 
 function EmptyOrLoading({ loading }) {
   return (
-    <p className="text-center text-gray-400 py-14 text-sm">
+    <p className="text-center text-[#888] py-14 text-sm">
       {loading ? 'Cargando movimientos...' : 'Sin movimientos en el período seleccionado'}
     </p>
   )
@@ -131,9 +128,10 @@ function EmptyOrLoading({ loading }) {
 function Modal({ title, onClose, children }) {
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[92vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        <div className="px-6 pt-6 pb-2 border-b border-gray-100">
-          <h3 className="text-base font-bold text-gray-900">{title}</h3>
+      <div className="bg-white rounded-[16px] border border-[#f0e6d8] w-full max-w-md max-h-[92vh] overflow-y-auto"
+           onClick={e => e.stopPropagation()}>
+        <div className="px-6 pt-6 pb-3 border-b border-[#f0e6d8]">
+          <h3 className="text-base font-semibold text-[#111]">{title}</h3>
         </div>
         <div className="p-6">{children}</div>
       </div>
@@ -143,13 +141,11 @@ function Modal({ title, onClose, children }) {
 
 function ModalActions({ onClose, saving }) {
   return (
-    <div className="flex gap-3 pt-4 border-t border-gray-100 mt-4">
-      <button type="button" onClick={onClose}
-        className="flex-1 border border-gray-300 rounded-lg py-2 text-sm font-medium hover:bg-gray-50 transition-colors text-gray-700">
+    <div className="flex gap-3 pt-4 border-t border-[#f0e6d8] mt-4">
+      <button type="button" onClick={onClose} className="btn-secondary flex-1 py-2">
         Cancelar
       </button>
-      <button type="submit" disabled={saving}
-        className="flex-1 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white rounded-lg py-2 text-sm font-medium transition-colors">
+      <button type="submit" disabled={saving} className="btn-primary flex-1 py-2 disabled:opacity-50">
         {saving ? 'Guardando...' : 'Guardar movimiento'}
       </button>
     </div>
@@ -158,7 +154,7 @@ function ModalActions({ onClose, saving }) {
 
 function Label({ children, required }) {
   return (
-    <label className="text-xs font-semibold text-gray-500 block mb-1">
+    <label className="section-label block mb-1.5">
       {children}{required && <span className="text-red-400 ml-0.5">*</span>}
     </label>
   )
@@ -166,11 +162,13 @@ function Label({ children, required }) {
 
 function ToggleGroup({ options, value, onChange }) {
   return (
-    <div className={`grid gap-2`} style={{ gridTemplateColumns: `repeat(${options.length}, 1fr)` }}>
+    <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${options.length}, 1fr)` }}>
       {options.map(o => (
         <button key={o.v} type="button" onClick={() => onChange(o.v)}
-          className={`py-2 rounded-lg text-sm font-semibold border-2 transition-all ${
-            value === o.v ? o.active : 'border-gray-200 text-gray-500 bg-white hover:bg-gray-50'
+          className={`py-2 rounded-[10px] text-sm font-semibold transition-all ${
+            value === o.v
+              ? o.active
+              : 'bg-[#fee7ef] border border-[#f0e6d8] text-[#555]'
           }`}>
           {o.l}
         </button>
@@ -315,7 +313,7 @@ function SilviaCaja({ reservas }) {
 
       <FilterRow mes={mes} anio={anio} onMes={setMes} onAnio={setAnio} onAdd={() => setModal(true)}>
         <div>
-          <label className="text-xs text-gray-400 block mb-1 font-medium">Tipo</label>
+          <label className="section-label block mb-1">Tipo</label>
           <select value={tipo} onChange={e => setTipo(e.target.value)} className={sc}>
             <option value="todos">Todos</option>
             <option value="ingresos">Ingresos</option>
@@ -328,10 +326,10 @@ function SilviaCaja({ reservas }) {
       {loading || filtered.length === 0
         ? <EmptyOrLoading loading={loading} />
         : (
-          <div className="overflow-x-auto rounded-xl border border-gray-200 shadow-sm">
+          <div className="overflow-x-auto rounded-[16px] border border-[#f0e6d8] overflow-hidden">
             <table className="w-full" style={{ minWidth: 820 }}>
               <thead>
-                <tr className="bg-slate-800 text-slate-200">
+                <tr className="bg-[#111111] text-white">
                   <Th>Fecha</Th>
                   <Th>Cuenta</Th>
                   <Th>Detalle / Nº Op.</Th>
@@ -340,7 +338,7 @@ function SilviaCaja({ reservas }) {
                   <Th right cls="text-emerald-300">Ing. Juli</Th>
                   <Th right cls="text-red-300">Gastos</Th>
                   <Th right cls="text-orange-300">Retiro $</Th>
-                  <Th right cls="bg-slate-900 text-slate-100">Total $</Th>
+                  <Th right cls="bg-[#0d0d0d] text-white">Total $</Th>
                   <Th cls="text-center">Comp.</Th>
                   <Th></Th>
                 </tr>
@@ -350,23 +348,24 @@ function SilviaCaja({ reservas }) {
                   const t  = getTipoSilvia(r)
                   const ac = AMOUNT_CL[t] || ''
                   return (
-                    <tr key={r.id} className={`border-b border-gray-100 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-slate-50 transition-colors`}>
+                    <tr key={r.id} className={`border-b border-[#f0e6d8] ${i % 2 === 0 ? 'bg-white' : 'bg-[#fee7ef]'} hover:bg-[#fff4e8] transition-colors`}
+                        style={{ boxShadow: undefined }}>
                       <Td>{fmtD(r.fecha)}</Td>
-                      <Td cls="text-gray-500">{r.cuenta || '—'}</Td>
-                      <Td cls="max-w-[140px] truncate text-gray-700" title={r.detalle}>{r.detalle || '—'}</Td>
-                      <Td cls="text-gray-500">{r.recibo || '—'}</Td>
-                      <Td right cls={t === 'ingreso_alquiler' ? ac : 'text-gray-200'}>{num(r.ingreso_pesos) > 0 ? pesos(r.ingreso_pesos) : ''}</Td>
-                      <Td right cls={t === 'ingreso_juli'     ? ac : 'text-gray-200'}>{num(r.ingreso_juli)  > 0 ? pesos(r.ingreso_juli)  : ''}</Td>
-                      <Td right cls={t === 'gasto'            ? ac : 'text-gray-200'}>{num(r.gasto)         > 0 ? pesos(r.gasto)         : ''}</Td>
-                      <Td right cls={t === 'retiro'           ? ac : 'text-gray-200'}>{num(r.retiro_pesos)  > 0 ? pesos(r.retiro_pesos)  : ''}</Td>
-                      <Td right cls="font-semibold text-slate-800 bg-slate-50 border-l border-slate-200">{pesos(r._ps)}</Td>
+                      <Td cls="text-[#888]">{r.cuenta || '—'}</Td>
+                      <Td cls="max-w-[140px] truncate text-[#333]" title={r.detalle}>{r.detalle || '—'}</Td>
+                      <Td cls="text-[#888]">{r.recibo || '—'}</Td>
+                      <Td right cls={t === 'ingreso_alquiler' ? ac : 'text-[#ddd]'}>{num(r.ingreso_pesos) > 0 ? pesos(r.ingreso_pesos) : ''}</Td>
+                      <Td right cls={t === 'ingreso_juli'     ? ac : 'text-[#ddd]'}>{num(r.ingreso_juli)  > 0 ? pesos(r.ingreso_juli)  : ''}</Td>
+                      <Td right cls={t === 'gasto'            ? ac : 'text-[#ddd]'}>{num(r.gasto)         > 0 ? pesos(r.gasto)         : ''}</Td>
+                      <Td right cls={t === 'retiro'           ? ac : 'text-[#ddd]'}>{num(r.retiro_pesos)  > 0 ? pesos(r.retiro_pesos)  : ''}</Td>
+                      <Td right cls="font-semibold text-[#111] bg-[#fee7ef] border-l border-[#f0e6d8]">{pesos(r._ps)}</Td>
                       <Td cls="text-center">
                         {r.comprobante
-                          ? <a href={getPublicUrl(r.comprobante)} target="_blank" rel="noopener noreferrer" className="text-slate-600 hover:underline text-xs font-medium">Ver</a>
-                          : <span className="text-gray-300 text-xs">—</span>}
+                          ? <a href={getPublicUrl(r.comprobante)} target="_blank" rel="noopener noreferrer" className="text-[#d2ab84] hover:underline text-xs font-medium">Ver</a>
+                          : <span className="text-[#ddd] text-xs">—</span>}
                       </Td>
                       <Td>
-                        <button onClick={() => del(r.id)} className="text-gray-300 hover:text-red-500 transition-colors text-xs">✕</button>
+                        <button onClick={() => del(r.id)} className="text-[#ccc] hover:text-red-500 transition-colors text-xs">✕</button>
                       </Td>
                     </tr>
                   )
@@ -379,20 +378,18 @@ function SilviaCaja({ reservas }) {
       {modal && (
         <Modal title="Nuevo movimiento — Caja Silvia" onClose={closeModal}>
           <form onSubmit={submit} className="space-y-4">
-            {/* Ingreso / Egreso */}
             <div>
               <Label required>Tipo</Label>
               <ToggleGroup
                 value={form.tipo}
                 onChange={v => setForm(f => ({ ...f, tipo: v, sub_tipo: v === 'ingreso' ? 'alquiler' : 'gasto', _reservaId: '', detalle: '', monto: '' }))}
                 options={[
-                  { v: 'ingreso', l: 'Ingreso', active: 'bg-green-600 text-white border-green-600' },
-                  { v: 'egreso',  l: 'Egreso',  active: 'bg-red-500 text-white border-red-500'   },
+                  { v: 'ingreso', l: 'Ingreso', active: 'bg-green-600 text-white' },
+                  { v: 'egreso',  l: 'Egreso',  active: 'bg-red-500 text-white'   },
                 ]}
               />
             </div>
 
-            {/* Sub-tipo */}
             {form.tipo === 'ingreso' && (
               <div>
                 <Label required>Origen del ingreso</Label>
@@ -400,8 +397,8 @@ function SilviaCaja({ reservas }) {
                   value={form.sub_tipo}
                   onChange={v => setForm(f => ({ ...f, sub_tipo: v, _reservaId: '', detalle: '', monto: '' }))}
                   options={[
-                    { v: 'alquiler', l: 'Alquiler', active: 'bg-blue-600 text-white border-blue-600'    },
-                    { v: 'juli',     l: 'Por Juli',  active: 'bg-blue-600 text-white border-blue-600'   },
+                    { v: 'alquiler', l: 'Alquiler', active: 'bg-[#d2ab84] text-white' },
+                    { v: 'juli',     l: 'Por Juli',  active: 'bg-[#d2ab84] text-white' },
                   ]}
                 />
               </div>
@@ -413,42 +410,29 @@ function SilviaCaja({ reservas }) {
                   value={form.sub_tipo}
                   onChange={v => setForm(f => ({ ...f, sub_tipo: v, cuenta: '' }))}
                   options={[
-                    { v: 'gasto',  l: 'Gasto',         active: 'bg-red-500   text-white border-red-500'    },
-                    { v: 'retiro', l: 'Retiro en $',    active: 'bg-orange-500 text-white border-orange-500' },
+                    { v: 'gasto',  l: 'Gasto',      active: 'bg-red-500 text-white'    },
+                    { v: 'retiro', l: 'Retiro en $', active: 'bg-orange-500 text-white' },
                   ]}
                 />
               </div>
             )}
 
-            {/* Reserva picker (solo ingreso alquiler) */}
             {isIngAlquiler && (
               <div>
                 <Label>Vincular reserva</Label>
-                <select
-                  value={form._reservaId}
-                  onChange={e => handleReserva(e.target.value)}
-                  className={ic}
-                >
+                <select value={form._reservaId} onChange={e => handleReserva(e.target.value)} className={ic}>
                   <option value="">— Sin vincular —</option>
                   {reservas.map(r => (
-                    <option key={r.id} value={r.id}>
-                      {r.codigo} · {r.nombre_apellido}
-                    </option>
+                    <option key={r.id} value={r.id}>{r.codigo} · {r.nombre_apellido}</option>
                   ))}
                 </select>
               </div>
             )}
 
-            {/* Categoría de gasto */}
             {isGasto && (
               <div>
                 <Label required>Categoría</Label>
-                <select
-                  value={form.cuenta}
-                  onChange={e => set('cuenta', e.target.value)}
-                  required
-                  className={ic}
-                >
+                <select value={form.cuenta} onChange={e => set('cuenta', e.target.value)} required className={ic}>
                   <option value="">Seleccionar categoría</option>
                   {GASTOS_SILVIA.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
@@ -581,11 +565,11 @@ function JuliCaja() {
         { label: 'Transf. a Silvia',   value: pesos(sum.transfSilvia), color: 'orange' },
       ]} />
 
-      <div className="flex items-center gap-1 mb-4 border-b border-gray-200">
+      <div className="flex items-center gap-1 mb-4 border-b border-[#f0e6d8]">
         {[{ value: 'main', label: 'Caja Juli' }, { value: 'gastos', label: 'Gastos efectivo / MP' }].map(v => (
           <button key={v.value} onClick={() => setVista(v.value)}
             className={`px-4 py-2.5 text-sm font-semibold border-b-2 -mb-px transition-all ${
-              vista === v.value ? 'border-slate-800 text-slate-800' : 'border-transparent text-gray-400 hover:text-gray-600'
+              vista === v.value ? 'border-[#d2ab84] text-[#111]' : 'border-transparent text-[#888] hover:text-[#333]'
             }`}
           >
             {v.label}
@@ -594,23 +578,23 @@ function JuliCaja() {
       </div>
 
       <FilterRow mes={mes} anio={anio} onMes={setMes} onAnio={setAnio} onAdd={() => openModal(vista)}
-        addLabel={vista === 'main' ? '+ Ingreso / Egreso' : '+ Gasto efectivo/MP'}
+        addLabel="+ Nuevo movimiento"
       />
 
       {vista === 'main' && (
         loading || filtered.length === 0
           ? <EmptyOrLoading loading={loading} />
           : (
-            <div className="overflow-x-auto rounded-xl border border-gray-200 shadow-sm">
+            <div className="overflow-x-auto rounded-[16px] border border-[#f0e6d8] overflow-hidden">
               <table className="w-full" style={{ minWidth: 580 }}>
                 <thead>
-                  <tr className="bg-slate-800 text-slate-200">
+                  <tr className="bg-[#111111] text-white">
                     <Th>Fecha</Th>
                     <Th>Detalle / Nº Op.</Th>
                     <Th>Recibo</Th>
                     <Th right cls="text-green-300">Ingreso</Th>
                     <Th right cls="text-red-300">Egreso</Th>
-                    <Th right cls="bg-slate-900 text-slate-100">Total en caja</Th>
+                    <Th right cls="bg-[#0d0d0d] text-white">Total en caja</Th>
                     <Th cls="text-center">Comp.</Th>
                     <Th></Th>
                   </tr>
@@ -619,17 +603,17 @@ function JuliCaja() {
                   {filtered.map((r, i) => {
                     const esIng = r.tipo_main === 'ingreso'
                     return (
-                      <tr key={r.id} className={`border-b border-gray-100 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-slate-50`}>
+                      <tr key={r.id} className={`border-b border-[#f0e6d8] ${i % 2 === 0 ? 'bg-white' : 'bg-[#fee7ef]'} hover:bg-[#fff4e8]`}>
                         <Td>{fmtD(r.fecha)}</Td>
-                        <Td cls="max-w-[180px] truncate text-gray-700" title={r.detalle}>{r.detalle || '—'}</Td>
-                        <Td cls="text-gray-500">{r.recibo || '—'}</Td>
-                        <Td right cls={esIng ? 'text-green-700 font-semibold' : 'text-gray-200'}>{esIng ? pesos(r.importe) : ''}</Td>
-                        <Td right cls={!esIng ? 'text-red-600 font-semibold' : 'text-gray-200'}>{!esIng ? pesos(r.importe) : ''}</Td>
-                        <Td right cls="font-semibold text-slate-800 bg-slate-50 border-l border-slate-200">{pesos(r._total)}</Td>
+                        <Td cls="max-w-[180px] truncate text-[#333]" title={r.detalle}>{r.detalle || '—'}</Td>
+                        <Td cls="text-[#888]">{r.recibo || '—'}</Td>
+                        <Td right cls={esIng ? 'text-green-700 font-semibold' : 'text-[#ddd]'}>{esIng ? pesos(r.importe) : ''}</Td>
+                        <Td right cls={!esIng ? 'text-red-600 font-semibold' : 'text-[#ddd]'}>{!esIng ? pesos(r.importe) : ''}</Td>
+                        <Td right cls="font-semibold text-[#111] bg-[#fee7ef] border-l border-[#f0e6d8]">{pesos(r._total)}</Td>
                         <Td cls="text-center">
-                          {r.comprobante ? <a href={getPublicUrl(r.comprobante)} target="_blank" rel="noopener noreferrer" className="text-slate-600 hover:underline text-xs font-medium">Ver</a> : <span className="text-gray-300 text-xs">—</span>}
+                          {r.comprobante ? <a href={getPublicUrl(r.comprobante)} target="_blank" rel="noopener noreferrer" className="text-[#d2ab84] hover:underline text-xs font-medium">Ver</a> : <span className="text-[#ddd] text-xs">—</span>}
                         </Td>
-                        <Td><button onClick={() => del(r.id)} className="text-gray-300 hover:text-red-500 text-xs">✕</button></Td>
+                        <Td><button onClick={() => del(r.id)} className="text-[#ccc] hover:text-red-500 text-xs">✕</button></Td>
                       </tr>
                     )
                   })}
@@ -643,17 +627,17 @@ function JuliCaja() {
         loading || filtered.length === 0
           ? <EmptyOrLoading loading={loading} />
           : (
-            <div className="overflow-x-auto rounded-xl border border-gray-200 shadow-sm">
+            <div className="overflow-x-auto rounded-[16px] border border-[#f0e6d8] overflow-hidden">
               <table className="w-full" style={{ minWidth: 840 }}>
                 <thead>
-                  <tr className="bg-slate-800 text-slate-200">
+                  <tr className="bg-[#111111] text-white">
                     <Th>Fecha</Th>
                     <Th>Detalle / Nº Op.</Th>
                     <Th>Recibo</Th>
                     <Th right cls="text-orange-300">Transf. Silvia</Th>
                     <Th right cls="text-red-300">Importe</Th>
                     <Th right cls="text-green-300">Devolución</Th>
-                    <Th right cls="bg-slate-900 text-slate-100">Total en caja</Th>
+                    <Th right cls="bg-[#0d0d0d] text-white">Total en caja</Th>
                     <Th>Modalidad</Th>
                     <Th>Estado</Th>
                     <Th cls="text-center">Comp.</Th>
@@ -662,28 +646,28 @@ function JuliCaja() {
                 </thead>
                 <tbody>
                   {filtered.map((r, i) => (
-                    <tr key={r.id} className={`border-b border-gray-100 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-slate-50`}>
+                    <tr key={r.id} className={`border-b border-[#f0e6d8] ${i % 2 === 0 ? 'bg-white' : 'bg-[#fee7ef]'} hover:bg-[#fff4e8]`}>
                       <Td>{fmtD(r.fecha)}</Td>
-                      <Td cls="max-w-[140px] truncate text-gray-700" title={r.detalle}>{r.detalle || '—'}</Td>
-                      <Td cls="text-gray-500">{r.recibo || '—'}</Td>
-                      <Td right cls={num(r.transferencia_silvia) > 0 ? 'text-orange-600 font-semibold' : 'text-gray-200'}>{num(r.transferencia_silvia) > 0 ? pesos(r.transferencia_silvia) : ''}</Td>
+                      <Td cls="max-w-[140px] truncate text-[#333]" title={r.detalle}>{r.detalle || '—'}</Td>
+                      <Td cls="text-[#888]">{r.recibo || '—'}</Td>
+                      <Td right cls={num(r.transferencia_silvia) > 0 ? 'text-orange-600 font-semibold' : 'text-[#ddd]'}>{num(r.transferencia_silvia) > 0 ? pesos(r.transferencia_silvia) : ''}</Td>
                       <Td right cls="text-red-600 font-semibold">{pesos(r.importe)}</Td>
-                      <Td right cls={num(r.devolucion) > 0 ? 'text-green-700 font-semibold' : 'text-gray-200'}>{num(r.devolucion) > 0 ? pesos(r.devolucion) : ''}</Td>
-                      <Td right cls="font-semibold text-slate-800 bg-slate-50 border-l border-slate-200">{pesos(r._total)}</Td>
+                      <Td right cls={num(r.devolucion) > 0 ? 'text-green-700 font-semibold' : 'text-[#ddd]'}>{num(r.devolucion) > 0 ? pesos(r.devolucion) : ''}</Td>
+                      <Td right cls="font-semibold text-[#111] bg-[#fee7ef] border-l border-[#f0e6d8]">{pesos(r._total)}</Td>
                       <Td>
-                        <span className={`inline-flex px-2 py-0.5 rounded-md text-xs font-medium ${r.modalidad_pago === 'Mercado Pago' ? 'bg-indigo-50 text-indigo-700' : 'bg-gray-100 text-gray-600'}`}>
+                        <span className={`inline-flex px-2 py-0.5 rounded-[8px] text-xs font-medium ${r.modalidad_pago === 'Mercado Pago' ? 'bg-indigo-50 text-indigo-700' : 'bg-[#fee7ef] text-[#555]'}`}>
                           {r.modalidad_pago || '—'}
                         </span>
                       </Td>
                       <Td>
-                        <span className={`inline-flex px-2 py-0.5 rounded-md text-xs font-medium ${r.devuelto ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`}>
+                        <span className={`inline-flex px-2 py-0.5 rounded-[8px] text-xs font-medium ${r.devuelto ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`}>
                           {r.devuelto ? 'Devuelto' : 'Pendiente'}
                         </span>
                       </Td>
                       <Td cls="text-center">
-                        {r.comprobante ? <a href={getPublicUrl(r.comprobante)} target="_blank" rel="noopener noreferrer" className="text-slate-600 hover:underline text-xs font-medium">Ver</a> : <span className="text-gray-300 text-xs">—</span>}
+                        {r.comprobante ? <a href={getPublicUrl(r.comprobante)} target="_blank" rel="noopener noreferrer" className="text-[#d2ab84] hover:underline text-xs font-medium">Ver</a> : <span className="text-[#ddd] text-xs">—</span>}
                       </Td>
-                      <Td><button onClick={() => del(r.id)} className="text-gray-300 hover:text-red-500 text-xs">✕</button></Td>
+                      <Td><button onClick={() => del(r.id)} className="text-[#ccc] hover:text-red-500 text-xs">✕</button></Td>
                     </tr>
                   ))}
                 </tbody>
@@ -705,8 +689,8 @@ function JuliCaja() {
                   value={form.tipo_main}
                   onChange={v => set('tipo_main', v)}
                   options={[
-                    { v: 'ingreso', l: 'Ingreso', active: 'bg-green-600 text-white border-green-600' },
-                    { v: 'egreso',  l: 'Egreso',  active: 'bg-red-500 text-white border-red-500'   },
+                    { v: 'ingreso', l: 'Ingreso', active: 'bg-green-600 text-white' },
+                    { v: 'egreso',  l: 'Egreso',  active: 'bg-red-500 text-white'   },
                   ]}
                 />
               </div>
@@ -721,8 +705,20 @@ function JuliCaja() {
                 <input type="number" min={0} step="0.01" value={form.importe} onChange={e => set('importe', e.target.value)} required className={ic} placeholder="0" />
               </div>
               <div>
-                <Label>Detalle / Nº Operación</Label>
-                <input type="text" value={form.detalle} onChange={e => set('detalle', e.target.value)} className={ic} />
+                {form.seccion === 'gastos' ? (
+                  <>
+                    <Label required>Categoría</Label>
+                    <select value={form.detalle} onChange={e => set('detalle', e.target.value)} required className={ic}>
+                      <option value="">Seleccionar categoría</option>
+                      {GASTOS_SILVIA.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </>
+                ) : (
+                  <>
+                    <Label>Detalle / Nº Operación</Label>
+                    <input type="text" value={form.detalle} onChange={e => set('detalle', e.target.value)} className={ic} />
+                  </>
+                )}
               </div>
               <div>
                 <Label>Recibo</Label>
@@ -751,7 +747,7 @@ function JuliCaja() {
                   </div>
                   <label className="flex items-center gap-2.5 cursor-pointer select-none pb-1">
                     <input type="checkbox" checked={form.devuelto} onChange={e => set('devuelto', e.target.checked)} className="w-4 h-4 rounded accent-green-600" />
-                    <span className="text-sm text-gray-700 font-medium">Devuelto</span>
+                    <span className="text-sm text-[#333] font-medium">Devuelto</span>
                   </label>
                 </div>
               </>
@@ -860,6 +856,11 @@ function CajaTransfer({ tabla, titulo, reservas }) {
     await supabase.from(tabla).delete().eq('id', id); load()
   }
 
+  const toggleChequeado = async (id, current) => {
+    setRows(prev => prev.map(r => r.id === id ? { ...r, chequeado: !current } : r))
+    await supabase.from(tabla).update({ chequeado: !current }).eq('id', id)
+  }
+
   return (
     <div>
       <BigTotals items={[
@@ -876,35 +877,45 @@ function CajaTransfer({ tabla, titulo, reservas }) {
       {loading || filtered.length === 0
         ? <EmptyOrLoading loading={loading} />
         : (
-          <div className="overflow-x-auto rounded-xl border border-gray-200 shadow-sm">
-            <table className="w-full" style={{ minWidth: 680 }}>
+          <div className="overflow-x-auto rounded-[16px] border border-[#f0e6d8] overflow-hidden">
+            <table className="w-full" style={{ minWidth: 780 }}>
               <thead>
-                <tr className="bg-slate-800 text-slate-200">
+                <tr className="bg-[#111111] text-white">
                   <Th>Fecha</Th>
                   <Th>Detalle</Th>
                   <Th>Reserva</Th>
                   <Th right cls="text-green-300">Ingreso</Th>
                   <Th right cls="text-red-300">Egreso</Th>
-                  <Th right cls="bg-slate-900 text-slate-100">Total</Th>
+                  <Th right cls="bg-[#0d0d0d] text-white">Total</Th>
                   <Th cls="text-center">Comp.</Th>
+                  <Th cls="text-center">Chequeado</Th>
                   <Th></Th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.map((r, i) => (
-                  <tr key={r.id} className={`border-b border-gray-100 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-slate-50`}>
+                  <tr key={r.id} className={`border-b border-[#f0e6d8] ${i % 2 === 0 ? 'bg-white' : 'bg-[#fee7ef]'} hover:bg-[#fff4e8]`}>
                     <Td>{fmtD(r.fecha)}</Td>
-                    <Td cls="max-w-[200px] truncate text-gray-700" title={r.detalle}>{r.detalle || '—'}</Td>
-                    <Td cls="text-gray-500 font-mono text-xs">{r.reserva_codigo || '—'}</Td>
-                    <Td right cls={num(r.ingreso) > 0 ? 'text-green-700 font-semibold' : 'text-gray-200'}>{num(r.ingreso) > 0 ? pesos(r.ingreso) : ''}</Td>
-                    <Td right cls={num(r.egreso)  > 0 ? 'text-red-600  font-semibold' : 'text-gray-200'}>{num(r.egreso)  > 0 ? pesos(r.egreso)  : ''}</Td>
-                    <Td right cls="font-semibold text-slate-800 bg-slate-50 border-l border-slate-200">{pesos(r._total)}</Td>
+                    <Td cls="max-w-[200px] truncate text-[#333]" title={r.detalle}>{r.detalle || '—'}</Td>
+                    <Td cls="text-[#888] font-mono text-xs">{r.reserva_codigo || '—'}</Td>
+                    <Td right cls={num(r.ingreso) > 0 ? 'text-green-700 font-semibold' : 'text-[#ddd]'}>{num(r.ingreso) > 0 ? pesos(r.ingreso) : ''}</Td>
+                    <Td right cls={num(r.egreso)  > 0 ? 'text-red-600  font-semibold' : 'text-[#ddd]'}>{num(r.egreso)  > 0 ? pesos(r.egreso)  : ''}</Td>
+                    <Td right cls="font-semibold text-[#111] bg-[#fee7ef] border-l border-[#f0e6d8]">{pesos(r._total)}</Td>
                     <Td cls="text-center">
                       {r.comprobante
-                        ? <a href={getPublicUrl(r.comprobante)} target="_blank" rel="noopener noreferrer" className="text-slate-600 hover:underline text-xs font-medium">Ver</a>
-                        : <span className="text-gray-300 text-xs">—</span>}
+                        ? <a href={getPublicUrl(r.comprobante)} target="_blank" rel="noopener noreferrer" className="text-[#d2ab84] hover:underline text-xs font-medium">Ver</a>
+                        : <span className="text-[#ddd] text-xs">—</span>}
                     </Td>
-                    <Td><button onClick={() => del(r.id)} className="text-gray-300 hover:text-red-500 text-xs">✕</button></Td>
+                    <Td cls="text-center">
+                      <input
+                        type="checkbox"
+                        checked={!!r.chequeado}
+                        onChange={() => toggleChequeado(r.id, r.chequeado)}
+                        className="w-4 h-4 rounded accent-[#d2ab84] cursor-pointer"
+                        title={r.chequeado ? 'Chequeado' : 'Sin chequear'}
+                      />
+                    </Td>
+                    <Td><button onClick={() => del(r.id)} className="text-[#ccc] hover:text-red-500 text-xs">✕</button></Td>
                   </tr>
                 ))}
               </tbody>
@@ -921,24 +932,18 @@ function CajaTransfer({ tabla, titulo, reservas }) {
                 value={form.tipo}
                 onChange={v => set('tipo', v)}
                 options={[
-                  { v: 'ingreso', l: 'Ingreso', active: 'bg-green-600 text-white border-green-600' },
-                  { v: 'egreso',  l: 'Egreso',  active: 'bg-red-500 text-white border-red-500'   },
+                  { v: 'ingreso', l: 'Ingreso', active: 'bg-green-600 text-white' },
+                  { v: 'egreso',  l: 'Egreso',  active: 'bg-red-500 text-white'   },
                 ]}
               />
             </div>
 
             <div>
               <Label>Vincular reserva (opcional)</Label>
-              <select
-                value={form._reservaId}
-                onChange={e => handleReserva(e.target.value)}
-                className={ic}
-              >
+              <select value={form._reservaId} onChange={e => handleReserva(e.target.value)} className={ic}>
                 <option value="">— Sin vincular —</option>
                 {reservas.map(r => (
-                  <option key={r.id} value={r.id}>
-                    {r.codigo} · {r.nombre_apellido}
-                  </option>
+                  <option key={r.id} value={r.id}>{r.codigo} · {r.nombre_apellido}</option>
                 ))}
               </select>
             </div>
@@ -978,7 +983,7 @@ const TABS = [
 ]
 
 export default function Caja() {
-  const [tab, setTab]         = useState('silvia')
+  const [tab, setTab]           = useState('silvia')
   const [reservas, setReservas] = useState([])
 
   useEffect(() => {
@@ -991,12 +996,12 @@ export default function Caja() {
   }, [])
 
   return (
-    <div>
-      <div className="border-b border-gray-200 mb-6">
+    <div className="fade-in">
+      <div className="border-b border-[#f0e6d8] mb-6">
         <div className="flex items-end justify-between">
           <div className="pb-3">
-            <h2 className="text-2xl font-bold text-gray-900">Caja</h2>
-            <p className="text-sm text-gray-400 mt-0.5">Registro de movimientos y totales</p>
+            <h2 className="text-[28px] font-bold text-[#111111]">Caja</h2>
+            <p className="text-sm text-[#888] mt-0.5">Registro de movimientos y totales</p>
           </div>
           <div className="flex flex-wrap">
             {TABS.map(t => (
@@ -1005,8 +1010,8 @@ export default function Caja() {
                 onClick={() => setTab(t.v)}
                 className={`px-6 py-3 text-sm font-semibold border-b-2 -mb-px transition-all ${
                   tab === t.v
-                    ? 'border-slate-800 text-slate-800'
-                    : 'border-transparent text-gray-400 hover:text-gray-600 hover:border-gray-300'
+                    ? 'border-[#d2ab84] text-[#111111]'
+                    : 'border-transparent text-[#888] hover:text-[#333] hover:border-[#f0e6d8]'
                 }`}
               >
                 {t.l}

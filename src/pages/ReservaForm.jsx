@@ -40,6 +40,9 @@ const EMPTY_FORM = {
   pago_cabana_comprobante: '',
   estado: 'Pendiente',
   observaciones: '',
+  descuento_aplicar:      false,
+  descuento_porcentaje:   '',
+  descuento_motivo:       '',
 }
 
 function calcNoches(entrada, salida) {
@@ -71,7 +74,7 @@ async function fetchNextCode() {
 function Field({ label, children, required }) {
   return (
     <div>
-      <label className="block text-xs font-medium text-gray-600 mb-1">
+      <label className="block section-label mb-1.5">
         {label}{required && <span className="text-red-500 ml-0.5">*</span>}
       </label>
       {children}
@@ -79,7 +82,57 @@ function Field({ label, children, required }) {
   )
 }
 
-const inputClass = "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-gray-50 disabled:text-gray-500"
+const inputClass = "field"
+
+// Dado un tipo de seña, devuelve la tabla de caja correspondiente
+function tablaCajaPorTipo(tipo) {
+  if (tipo === 'Mercado Pago') return 'caja_mercado_pago'
+  return 'caja_banco'
+}
+
+// Sincroniza una seña (1 o 2) en caja_banco / caja_mercado_pago
+async function syncCajaSeña(num, codigo, nombre, origMonto, origTipo, nuevoMonto, nuevoTipo, nuevaFecha) {
+  const hoy = new Date().toISOString().slice(0, 10)
+  const prefijo = num === 1 ? '1ª Seña' : '2ª Seña'
+
+  if (Number(origMonto || 0) > 0) {
+    await supabase.from(tablaCajaPorTipo(origTipo)).delete()
+      .eq('reserva_codigo', codigo)
+      .ilike('detalle', `${prefijo}%`)
+  }
+  if (Number(nuevoMonto || 0) > 0) {
+    await supabase.from(tablaCajaPorTipo(nuevoTipo)).insert({
+      fecha:          nuevaFecha || hoy,
+      detalle:        `${prefijo} · ${codigo} - ${nombre}`,
+      reserva_codigo: codigo,
+      reserva_nombre: nombre,
+      ingreso:        Number(nuevoMonto),
+      egreso:         0,
+    })
+  }
+}
+
+// Sincroniza pago en cabaña en caja_silvia
+async function syncCajaSilvia(codigo, nombre, origMonto, nuevoMonto, nuevaFecha) {
+  const hoy = new Date().toISOString().slice(0, 10)
+  if (Number(origMonto || 0) > 0) {
+    await supabase.from('caja_silvia').delete()
+      .ilike('detalle', `Pago en cabaña · ${codigo}%`)
+  }
+  if (Number(nuevoMonto || 0) > 0) {
+    await supabase.from('caja_silvia').insert({
+      fecha:           nuevaFecha || hoy,
+      cuenta:          'Alquiler',
+      detalle:         `Pago en cabaña · ${codigo} - ${nombre}`,
+      ingreso_pesos:   Number(nuevoMonto),
+      ingreso_dolares: 0,
+      ingreso_juli:    0,
+      gasto:           0,
+      retiro_pesos:    0,
+      retiro_dolares:  0,
+    })
+  }
+}
 
 export default function ReservaForm() {
   const { id } = useParams()
@@ -90,9 +143,12 @@ export default function ReservaForm() {
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(isEdit)
   const [error, setError] = useState('')
-  const [precioNoche, setPrecioNoche] = useState(null)
   const [precioNombrePeriodo, setPrecioNombrePeriodo] = useState('')
+  const [precioMinWarning, setPrecioMinWarning] = useState(null)
+  const [sinPeriodo, setSinPeriodo] = useState(false)
+  const [precioBaseNeto, setPrecioBaseNeto] = useState(null)
   const [montoModificado, setMontoModificado] = useState(false)
+  const [originalPagos, setOriginalPagos] = useState(null)
 
   const set = (field, value) => setForm((f) => ({ ...f, [field]: value }))
 
@@ -130,6 +186,19 @@ export default function ReservaForm() {
             pago_cabana_comprobante: data.pago_cabana_comprobante ?? '',
             estado: data.estado ?? 'Pendiente',
             observaciones: data.observaciones ?? '',
+            descuento_aplicar:    false,
+            descuento_porcentaje: '',
+            descuento_motivo:     '',
+          })
+          setOriginalPagos({
+            sena1_monto:      data.sena1_monto,
+            sena1_tipo:       data.sena1_tipo ?? 'Banco',
+            sena1_fecha:      data.sena1_fecha,
+            sena2_monto:      data.sena2_monto,
+            sena2_tipo:       data.sena2_tipo ?? 'Banco',
+            sena2_fecha:      data.sena2_fecha,
+            pago_cabana_monto: data.pago_cabana_monto,
+            pago_cabana_fecha: data.pago_cabana_fecha,
           })
         }
         setLoading(false)
@@ -142,40 +211,146 @@ export default function ReservaForm() {
   // Auto-calcular monto_total al crear (no al editar)
   useEffect(() => {
     if (isEdit) return
-    if (!form.fecha_entrada || !form.noches || form.noches <= 0) {
-      setPrecioNoche(null)
+    if (!form.fecha_entrada || !form.fecha_salida || !form.noches || form.noches <= 0) {
       setPrecioNombrePeriodo('')
-      set('monto_total', '')
+      setPrecioMinWarning(null)
+      setSinPeriodo(false)
+      setPrecioBaseNeto(null)
       return
     }
-    supabase
-      .from('precios')
-      .select('nombre, precio_noche')
-      .lte('fecha_inicio', form.fecha_entrada)
-      .gte('fecha_fin', form.fecha_entrada)
-      .limit(1)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (data) {
-          setPrecioNoche(data.precio_noche)
-          setPrecioNombrePeriodo(data.nombre)
-          set('monto_total', String(Math.round(form.noches * data.precio_noche)))
-        } else {
-          setPrecioNoche(null)
-          setPrecioNombrePeriodo('')
-          set('monto_total', '')
-        }
+
+    const pax     = Number(form.pax) || 2
+    const safePax = Math.min(Math.max(pax, 2), 7)
+
+    ;(async () => {
+      const { data: periodos, error: errPeriodos } = await supabase
+        .from('periodos_precios')
+        .select('id, nombre, fecha_inicio, fecha_fin, minimo_noches')
+        .order('orden')
+
+      console.log('[Precios] fecha_entrada:', form.fecha_entrada, '| pax:', safePax,
+        '| períodos obtenidos:', periodos?.length, '| error:', errPeriodos?.message)
+
+      if (errPeriodos || !periodos || periodos.length === 0) {
+        setSinPeriodo(true); setPrecioNombrePeriodo(''); setPrecioBaseNeto(null)
+        setPrecioMinWarning(null); return
+      }
+
+      // ISO date strings are directly comparable as strings (lexicographic = chronologic)
+      // End boundary is EXCLUSIVE: fecha_fin is the first day of the NEXT period
+      const fechaEntrada = form.fecha_entrada
+      const periodoEntrada = periodos.find((p) => {
+        const afterStart = fechaEntrada >= p.fecha_inicio
+        const beforeEnd  = !p.fecha_fin || fechaEntrada < p.fecha_fin
+        console.log(`[Precios]  → "${p.nombre}" ${p.fecha_inicio}–${p.fecha_fin ?? '∞'}: afterStart=${afterStart} beforeEnd=${beforeEnd}`)
+        return afterStart && beforeEnd
       })
-  }, [form.fecha_entrada, form.noches, isEdit])
+
+      if (!periodoEntrada) {
+        console.log('[Precios] ✗ Sin período para:', fechaEntrada)
+        setSinPeriodo(true); setPrecioNombrePeriodo(''); setPrecioBaseNeto(null)
+        setPrecioMinWarning(null); return
+      }
+
+      console.log('[Precios] ✓ Período:', periodoEntrada.nombre)
+      setSinPeriodo(false)
+
+      const warn = Number(periodoEntrada.minimo_noches) > form.noches
+        ? `Mínimo ${periodoEntrada.minimo_noches} noches para este período`
+        : null
+      setPrecioMinWarning(warn)
+
+      // Fetch prices for all periods × safePax
+      const { data: preciosPax, error: errPax } = await supabase
+        .from('precios_pax')
+        .select('periodo_id, pax, precio_noche, precio_semana')
+        .in('periodo_id', periodos.map((p) => p.id))
+        .eq('pax', safePax)
+
+      console.log('[Precios] precios_pax:', preciosPax?.length, '| error:', errPax?.message)
+
+      if (errPax || !preciosPax || preciosPax.length === 0) {
+        // Period found but no price rows for this PAX
+        setPrecioNombrePeriodo(periodoEntrada.nombre)
+        setPrecioBaseNeto(null)
+        return
+      }
+
+      const getPrecio = (periodoId) => preciosPax.find((r) => r.periodo_id === periodoId) || null
+
+      // Exactly 7 nights → weekly price
+      if (form.noches === 7) {
+        const pp = getPrecio(periodoEntrada.id)
+        if (pp && Number(pp.precio_semana) > 0) {
+          const weeklyTotal = Math.round(Number(pp.precio_semana))
+          setPrecioNombrePeriodo(`${periodoEntrada.nombre} · precio semana · ${safePax} PAX`)
+          setPrecioBaseNeto(weeklyTotal)
+          set('monto_total', String(weeklyTotal))
+          console.log('[Precios] ✓ Semana completa:', weeklyTotal)
+          return
+        }
+      }
+
+      // Proportional: iterate night by night using string dates (no timezone risk)
+      let total = 0
+      let dateStr = form.fecha_entrada
+      let breakdown = []
+
+      for (let n = 0; n < form.noches; n++) {
+        const periodo = periodos.find((p) =>
+          dateStr >= p.fecha_inicio && (!p.fecha_fin || dateStr < p.fecha_fin)
+        )
+        if (periodo) {
+          const pp = getPrecio(periodo.id)
+          const precioNocheActual = pp ? Number(pp.precio_noche) : 0
+          total += precioNocheActual
+          const last = breakdown[breakdown.length - 1]
+          if (last && last.id === periodo.id) {
+            last.noches++
+          } else {
+            breakdown.push({ id: periodo.id, nombre: periodo.nombre, noches: 1, precio: precioNocheActual })
+          }
+        }
+        // Advance by 1 day using string manipulation (avoids timezone drift)
+        const d = new Date(dateStr + 'T12:00:00')
+        d.setDate(d.getDate() + 1)
+        dateStr = d.toISOString().slice(0, 10)
+      }
+
+      const detalleTexto = breakdown.length > 1
+        ? breakdown.map((b) => `${b.noches}n × $${b.precio.toLocaleString('es-AR')} (${b.nombre})`).join(' + ')
+        : `${periodoEntrada.nombre} · ${safePax} PAX`
+
+      const computedTotal = total > 0 ? Math.round(total) : null
+      setPrecioNombrePeriodo(detalleTexto)
+      setPrecioBaseNeto(computedTotal)
+      if (computedTotal) set('monto_total', String(computedTotal))
+      console.log('[Precios] ✓ Total:', computedTotal, '|', detalleTexto)
+    })()
+  }, [form.fecha_entrada, form.fecha_salida, form.noches, form.pax, isEdit])
+
+  // Aplicar descuento al monto base calculado (solo en crear)
+  useEffect(() => {
+    if (isEdit || precioBaseNeto === null) return
+    if (!form.descuento_aplicar || !form.descuento_porcentaje) {
+      set('monto_total', String(precioBaseNeto))
+      return
+    }
+    const pct = Number(form.descuento_porcentaje)
+    if (pct <= 0 || pct > 100) { set('monto_total', String(precioBaseNeto)); return }
+    set('monto_total', String(Math.round(precioBaseNeto * (1 - pct / 100))))
+  }, [form.descuento_aplicar, form.descuento_porcentaje, precioBaseNeto, isEdit])
 
   const handleFechaEntrada = (value) => {
     const noches = calcNoches(value, form.fecha_salida)
     const mes = getMes(value)
+    setMontoModificado(false)
     setForm((f) => ({ ...f, fecha_entrada: value, noches, mes }))
   }
 
   const handleFechaSalida = (value) => {
     const noches = calcNoches(form.fecha_entrada, value)
+    setMontoModificado(false)
     setForm((f) => ({ ...f, fecha_salida: value, noches }))
   }
 
@@ -195,6 +370,13 @@ export default function ReservaForm() {
     }
 
     setSaving(true)
+
+    // Auto-cambiar estado Pendiente → Confirmada si hay al menos un pago
+    const hasPago =
+      Number(form.sena1_monto || 0) > 0 ||
+      Number(form.sena2_monto || 0) > 0 ||
+      Number(form.pago_cabana_monto || 0) > 0
+    const estadoFinal = form.estado === 'Pendiente' && hasPago ? 'Confirmada' : form.estado
 
     const payload = {
       codigo: form.codigo,
@@ -224,7 +406,7 @@ export default function ReservaForm() {
       pago_cabana_fecha: form.pago_cabana_fecha || null,
       pago_cabana_recibo: form.pago_cabana_recibo || null,
       pago_cabana_comprobante: form.pago_cabana_comprobante || null,
-      estado: form.estado,
+      estado: estadoFinal,
       observaciones: form.observaciones || null,
     }
 
@@ -233,6 +415,21 @@ export default function ReservaForm() {
 
     if (isEdit) {
       ({ error: err } = await supabase.from('reservas').update(payload).eq('id', id))
+
+      // Sincronizar cajas si no hubo error
+      if (!err && originalPagos) {
+        await Promise.all([
+          syncCajaSeña(1, form.codigo, form.nombre_apellido,
+            originalPagos.sena1_monto, originalPagos.sena1_tipo,
+            form.sena1_monto, form.sena1_tipo, form.sena1_fecha),
+          syncCajaSeña(2, form.codigo, form.nombre_apellido,
+            originalPagos.sena2_monto, originalPagos.sena2_tipo,
+            form.sena2_monto, form.sena2_tipo, form.sena2_fecha),
+          syncCajaSilvia(form.codigo, form.nombre_apellido,
+            originalPagos.pago_cabana_monto,
+            form.pago_cabana_monto, form.pago_cabana_fecha),
+        ])
+      }
     } else {
       const { data: inserted, error: insertErr } = await supabase
         .from('reservas')
@@ -295,15 +492,19 @@ export default function ReservaForm() {
       return
     }
 
-    navigate('/reservas')
+    const autoConfirmado = estadoFinal === 'Confirmada' && form.estado === 'Pendiente'
+    const navState = autoConfirmado ? { state: { toast: 'Reserva confirmada automáticamente' } } : {}
 
-    if (newReserva) {
-      console.log('[ReservaForm] Reserva creada, disparando email. Estado:', form.estado, '| Email:', form.email)
-      if (form.estado === 'Pendiente' && form.email) {
-        console.log('[ReservaForm] → Enviando email de confirmación...')
+    if (isEdit) {
+      navigate(`/reservas/${id}`, navState)
+    } else {
+      navigate(newReserva ? `/reservas/${newReserva.id}` : '/reservas', navState)
+    }
+
+    if (!isEdit && newReserva) {
+      if (estadoFinal === 'Pendiente' && form.email) {
         sendEmailConfirmacion(newReserva)
           .then(async (sentAt) => {
-            console.log('[ReservaForm] Email confirmación OK, sentAt:', sentAt)
             if (sentAt) {
               await supabase.from('reservas').update({
                 email_confirmacion_enviado_at: sentAt,
@@ -312,8 +513,7 @@ export default function ReservaForm() {
             }
           })
           .catch((e) => console.error('[ReservaForm] Email confirmación ERROR:', e))
-      } else if (form.estado === 'Confirmada' && form.email && Number(form.sena1_monto) > 0) {
-        console.log('[ReservaForm] → Enviando email de recibo...')
+      } else if (estadoFinal === 'Confirmada' && form.email && Number(form.sena1_monto) > 0) {
         const total_pagado = Number(form.sena1_monto || 0) + Number(form.sena2_monto || 0)
         const saldoEmail = Number(form.monto_total || 0) - total_pagado
         sendEmailRecibo(newReserva, {
@@ -323,11 +523,31 @@ export default function ReservaForm() {
           tipo: form.sena1_tipo,
           total_pagado,
           saldo: saldoEmail,
-        })
-          .then(() => console.log('[ReservaForm] Email recibo OK'))
-          .catch((e) => console.error('[ReservaForm] Email recibo ERROR:', e))
-      } else {
-        console.log('[ReservaForm] No se envía email. Estado:', form.estado, '| Tiene email:', !!form.email, '| Seña1:', form.sena1_monto)
+        }).catch((e) => console.error('[ReservaForm] Email recibo ERROR:', e))
+      }
+    } else if (isEdit && autoConfirmado && form.email) {
+      const origSena1 = Number(originalPagos?.sena1_monto || 0)
+      if (origSena1 === 0 && Number(form.sena1_monto || 0) > 0) {
+        const total_pagado =
+          Number(form.sena1_monto || 0) +
+          Number(form.sena2_monto || 0) +
+          Number(form.pago_cabana_monto || 0)
+        sendEmailRecibo({
+          email:           form.email,
+          nombre_apellido: form.nombre_apellido,
+          codigo:          form.codigo,
+          cabana:          form.cabana,
+          fecha_entrada:   form.fecha_entrada,
+          fecha_salida:    form.fecha_salida,
+          monto_total:     form.monto_total,
+        }, {
+          titulo: '1ª Seña',
+          monto: Number(form.sena1_monto),
+          fecha: form.sena1_fecha,
+          tipo: form.sena1_tipo,
+          total_pagado,
+          saldo: Number(form.monto_total || 0) - total_pagado,
+        }).catch((e) => console.error('[ReservaForm] Email recibo edit ERROR:', e))
       }
     }
   }
@@ -339,22 +559,19 @@ export default function ReservaForm() {
   return (
     <div className="max-w-3xl mx-auto">
       <div className="flex items-center gap-3 mb-6">
-        <button
-          onClick={() => navigate('/reservas')}
-          className="text-gray-500 hover:text-gray-700 text-sm"
-        >
+        <button onClick={() => navigate(isEdit ? `/reservas/${id}` : '/reservas')} className="text-[#888] hover:text-[#333] text-sm transition-colors">
           ← Volver
         </button>
-        <h2 className="text-2xl font-bold text-gray-800">
+        <h1 className="text-[28px] font-bold text-[#111111]">
           {isEdit ? `Editar ${form.codigo}` : 'Nueva reserva'}
-        </h2>
+        </h1>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
 
         {/* Sección 1: Huésped */}
-        <div className="bg-white rounded-xl shadow p-6">
-          <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">
+        <div className="card">
+          <h3 className="text-[18px] font-semibold text-[#111111] mb-4">
             Información del huésped
           </h3>
           <div className="grid grid-cols-2 gap-4">
@@ -413,8 +630,8 @@ export default function ReservaForm() {
         </div>
 
         {/* Sección 2: Reserva */}
-        <div className="bg-white rounded-xl shadow p-6">
-          <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">
+        <div className="card">
+          <h3 className="text-[18px] font-semibold text-[#111111] mb-4">
             Datos de la reserva
           </h3>
           <div className="grid grid-cols-2 gap-4">
@@ -442,7 +659,7 @@ export default function ReservaForm() {
                 type="number"
                 min={1}
                 value={form.pax}
-                onChange={(e) => set('pax', e.target.value)}
+                onChange={(e) => { set('pax', e.target.value); setMontoModificado(false) }}
                 className={inputClass}
               />
             </Field>
@@ -494,37 +711,34 @@ export default function ReservaForm() {
               />
             </Field>
             <Field label="Monto total ($)">
-              {isEdit ? (
-                <div className="relative">
-                  <input
-                    type="number"
-                    min={0}
-                    value={form.monto_total}
-                    onChange={(e) => { set('monto_total', e.target.value); setMontoModificado(true) }}
-                    className={inputClass}
-                    placeholder="0"
-                  />
-                  {montoModificado && (
-                    <span className="absolute right-2 top-1/2 -translate-y-1/2 bg-orange-100 text-orange-700 text-xs font-medium px-2 py-0.5 rounded-full pointer-events-none">
-                      Precio personalizado
-                    </span>
-                  )}
-                </div>
-              ) : (
+              <div className="relative">
+                <input
+                  type="number"
+                  min={0}
+                  value={form.monto_total}
+                  onChange={(e) => { set('monto_total', e.target.value); setMontoModificado(true) }}
+                  className={inputClass}
+                  placeholder="0"
+                />
+                {montoModificado && (
+                  <span className="absolute right-2 top-1/2 -translate-y-1/2 bg-orange-100 text-orange-700 text-xs font-medium px-2 py-0.5 rounded-full pointer-events-none">
+                    Precio personalizado
+                  </span>
+                )}
+              </div>
+              {!isEdit && (
                 <>
-                  <div className={`${inputClass} bg-gray-50 text-gray-700 font-medium`}>
-                    {form.monto_total
-                      ? `$${Number(form.monto_total).toLocaleString('es-AR')}`
-                      : '—'}
-                  </div>
-                  {precioNoche && form.noches > 0 && (
-                    <p className="text-xs text-gray-400 mt-1">
-                      {form.noches} noches × ${Number(precioNoche).toLocaleString('es-AR')}/noche · {precioNombrePeriodo}
+                  {precioNombrePeriodo && !sinPeriodo && (
+                    <p className="text-xs text-gray-400 mt-1">{precioNombrePeriodo}
+                      {precioBaseNeto === null && ' · sin precios cargados, ingresá el monto manualmente'}
                     </p>
                   )}
-                  {!precioNoche && form.fecha_entrada && (
+                  {precioMinWarning && (
+                    <p className="text-xs text-red-500 mt-1 font-medium">{precioMinWarning}</p>
+                  )}
+                  {sinPeriodo && form.fecha_entrada && (
                     <p className="text-xs text-orange-500 mt-1">
-                      Sin precio configurado para estas fechas. Cargá un período en Precios.
+                      No hay período configurado para estas fechas. Podés ingresar el monto manualmente.
                     </p>
                   )}
                 </>
@@ -535,18 +749,76 @@ export default function ReservaForm() {
                 ${saldo.toLocaleString('es-AR')}
               </div>
             </Field>
+
+            {/* Descuento */}
+            <div className="col-span-2 pt-1">
+              <label className="flex items-center gap-2 cursor-pointer w-fit mb-3">
+                <input
+                  type="checkbox"
+                  checked={form.descuento_aplicar}
+                  onChange={(e) => set('descuento_aplicar', e.target.checked)}
+                  className="w-4 h-4 rounded border-gray-300 text-green-600 focus:ring-green-500 cursor-pointer"
+                />
+                <span className="text-sm font-medium text-gray-700">Aplicar descuento</span>
+              </label>
+
+              {form.descuento_aplicar && (
+                <div className="bg-green-50 border border-green-200 rounded-xl p-4 space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="Porcentaje (%)">
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        value={form.descuento_porcentaje}
+                        onChange={(e) => set('descuento_porcentaje', e.target.value)}
+                        className={inputClass}
+                        placeholder="Ej: 10"
+                      />
+                    </Field>
+                    <Field label="Motivo">
+                      <input
+                        type="text"
+                        value={form.descuento_motivo}
+                        onChange={(e) => set('descuento_motivo', e.target.value)}
+                        className={inputClass}
+                        placeholder="Ej: Cliente frecuente"
+                      />
+                    </Field>
+                  </div>
+
+                  {/* Desglose (create mode only) */}
+                  {!isEdit && precioBaseNeto && Number(form.descuento_porcentaje) > 0 && (
+                    <div className="space-y-1.5 text-sm border-t border-green-200 pt-3">
+                      <div className="flex justify-between text-gray-600">
+                        <span>Precio base</span>
+                        <span>${precioBaseNeto.toLocaleString('es-AR')}</span>
+                      </div>
+                      <div className="flex justify-between text-red-600 font-medium">
+                        <span>Descuento ({form.descuento_porcentaje}%)</span>
+                        <span>− ${Math.round(precioBaseNeto * Number(form.descuento_porcentaje) / 100).toLocaleString('es-AR')}</span>
+                      </div>
+                      <div className="flex justify-between font-bold text-gray-800 border-t border-green-200 pt-1.5">
+                        <span>Total final</span>
+                        <span>${Number(form.monto_total || 0).toLocaleString('es-AR')}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
         {/* Sección 3: Pagos */}
         <div className="bg-white rounded-xl shadow p-6 space-y-6">
-          <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">
+          <h3 className="text-[18px] font-semibold text-[#111111]">
             Historial de pagos
           </h3>
 
           {/* 1ª Seña */}
-          <div className="border border-gray-200 rounded-lg p-4">
-            <p className="text-sm font-semibold text-gray-700 mb-3">1ª Seña</p>
+          <div className="card-sm">
+            <p className="text-sm font-semibold text-[#d2ab84] mb-3">1ª Seña</p>
             <div className="grid grid-cols-2 gap-4">
               <Field label="Monto ($)">
                 <input
@@ -589,8 +861,8 @@ export default function ReservaForm() {
           </div>
 
           {/* 2ª Seña */}
-          <div className="border border-gray-200 rounded-lg p-4">
-            <p className="text-sm font-semibold text-gray-700 mb-3">2ª Seña</p>
+          <div className="card-sm">
+            <p className="text-sm font-semibold text-[#d2ab84] mb-3">2ª Seña</p>
             <div className="grid grid-cols-2 gap-4">
               <Field label="Monto ($)">
                 <input
@@ -633,8 +905,8 @@ export default function ReservaForm() {
           </div>
 
           {/* Pago en cabaña */}
-          <div className="border border-gray-200 rounded-lg p-4">
-            <p className="text-sm font-semibold text-gray-700 mb-3">Pago en cabaña</p>
+          <div className="card-sm">
+            <p className="text-sm font-semibold text-[#d2ab84] mb-3">Pago en cabaña</p>
             <div className="grid grid-cols-2 gap-4">
               <Field label="Monto ($)">
                 <input
@@ -666,8 +938,8 @@ export default function ReservaForm() {
         </div>
 
         {/* Sección 4: Observaciones */}
-        <div className="bg-white rounded-xl shadow p-6">
-          <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">
+        <div className="card">
+          <h3 className="text-[18px] font-semibold text-[#111111] mb-4">
             Observaciones
           </h3>
           <textarea
@@ -688,15 +960,15 @@ export default function ReservaForm() {
         <div className="flex gap-3 pb-6">
           <button
             type="button"
-            onClick={() => navigate('/reservas')}
-            className="flex-1 border border-gray-300 rounded-lg py-2.5 text-sm font-medium hover:bg-gray-50 transition-colors"
+            onClick={() => navigate(isEdit ? `/reservas/${id}` : '/reservas')}
+            className="btn-secondary flex-1 py-2.5"
           >
             Cancelar
           </button>
           <button
             type="submit"
             disabled={saving}
-            className="flex-1 bg-primary-600 hover:bg-primary-700 disabled:opacity-50 text-white rounded-lg py-2.5 text-sm font-medium transition-colors"
+            className="btn-primary flex-1 py-2.5 disabled:opacity-50"
           >
             {saving ? 'Guardando...' : isEdit ? 'Guardar cambios' : 'Crear reserva'}
           </button>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+﻿import { useEffect, useMemo, useRef, useState, Fragment } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { CABANAS, getCabanaColor } from '../lib/cabanas'
@@ -12,10 +12,10 @@ import { es } from 'date-fns/locale'
 const DAY_W = 38
 
 const ESTADO_STYLES = {
-  Pendiente:  'bg-yellow-100 text-yellow-800',
-  Confirmada: 'bg-green-100 text-green-800',
-  Finalizada: 'bg-blue-100 text-blue-800',
-  Cancelada:  'bg-red-100 text-red-800',
+  Pendiente:  'badge badge-pendiente',
+  Confirmada: 'badge badge-confirmada',
+  Finalizada: 'badge badge-finalizada',
+  Cancelada:  'badge badge-cancelada',
 }
 
 function startOfToday() {
@@ -51,45 +51,45 @@ function CalendarPicker({ value, onChange, label }) {
   return (
     <div className="relative" ref={ref}>
       <div>
-        {label && <p className="text-xs text-gray-500 mb-1 font-medium">{label}</p>}
+        {label && <p className="section-label mb-1">{label}</p>}
         <button
           type="button"
           onClick={() => { setView(startOfMonth(value)); setOpen(!open) }}
-          className="flex items-center gap-2 border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white hover:border-primary-500 transition-colors shadow-sm"
+          className="field flex items-center gap-2 cursor-pointer w-auto"
         >
-          <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-4 h-4 text-[#d2ab84]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
           </svg>
-          <span className="font-medium text-gray-700 capitalize">
+          <span className="font-medium text-[#333] capitalize">
             {format(value, "d 'de' MMMM yyyy", { locale: es })}
           </span>
-          <svg className="w-3 h-3 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+          <svg className="w-3 h-3 text-[#888]" fill="currentColor" viewBox="0 0 20 20">
             <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
           </svg>
         </button>
       </div>
 
       {open && (
-        <div className="absolute top-full left-0 mt-2 bg-white rounded-xl shadow-xl border border-gray-200 z-40 p-4 w-72">
+        <div className="absolute top-full left-0 mt-2 bg-white rounded-[12px] border border-[#f0e6d8] z-40 p-4 w-72">
           <div className="flex items-center justify-between mb-3">
             <button
               type="button"
               onClick={() => setView(subMonths(view, 1))}
-              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-600 font-bold text-lg transition-colors"
+              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-[#fee7ef] text-[#333] font-bold text-lg transition-colors"
             >‹</button>
-            <span className="font-semibold text-sm text-gray-800 capitalize">
+            <span className="font-semibold text-sm text-[#111] capitalize">
               {format(view, 'MMMM yyyy', { locale: es })}
             </span>
             <button
               type="button"
               onClick={() => setView(addMonths(view, 1))}
-              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-600 font-bold text-lg transition-colors"
+              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-[#fee7ef] text-[#333] font-bold text-lg transition-colors"
             >›</button>
           </div>
 
           <div className="grid grid-cols-7 mb-1">
             {['Do','Lu','Ma','Mi','Ju','Vi','Sa'].map((d) => (
-              <div key={d} className="text-center text-xs text-gray-400 font-medium py-1">{d}</div>
+              <div key={d} className="text-center text-xs text-[#888] font-medium py-1">{d}</div>
             ))}
           </div>
 
@@ -106,7 +106,7 @@ function CalendarPicker({ value, onChange, label }) {
                   onClick={() => { onChange(date); setOpen(false) }}
                   className={`
                     h-8 w-full rounded-lg text-xs font-medium transition-colors
-                    ${selected ? 'bg-primary-600 text-white shadow-sm' : isT ? 'bg-orange-100 text-orange-700 font-bold' : 'hover:bg-gray-100 text-gray-700'}
+                    ${selected ? 'bg-[#d2ab84] text-white' : isT ? 'bg-orange-100 text-orange-700 font-bold' : 'hover:bg-[#fee7ef] text-[#333]'}
                   `}
                 >
                   {day}
@@ -118,7 +118,7 @@ function CalendarPicker({ value, onChange, label }) {
           <button
             type="button"
             onClick={() => { onChange(today); setOpen(false) }}
-            className="w-full mt-3 text-xs text-primary-600 hover:underline text-center"
+            className="w-full mt-3 text-xs text-[#d2ab84] hover:underline text-center"
           >
             Ir a hoy
           </button>
@@ -132,7 +132,7 @@ function CalendarPicker({ value, onChange, label }) {
 function DayHeaders({ startDate, numDays }) {
   const today = startOfToday()
   return (
-    <div className="flex border-b border-gray-200 bg-gray-50 sticky top-0 z-10">
+    <div className="flex border-b border-[#f0e6d8] bg-[#fee7ef] sticky top-0 z-10">
       {Array.from({ length: numDays }, (_, i) => {
         const day = addDays(startDate, i)
         const dow = getDay(day)
@@ -143,15 +143,15 @@ function DayHeaders({ startDate, numDays }) {
             key={i}
             style={{ width: DAY_W, minWidth: DAY_W, flexShrink: 0 }}
             className={`
-              text-center py-2 border-r border-gray-100 select-none
-              ${isWeekend ? 'bg-gray-100' : ''}
+              text-center py-2 border-r border-[#f0e6d8] select-none
+              ${isWeekend ? 'bg-[#fff4e8]' : ''}
               ${isToday ? 'bg-orange-50' : ''}
             `}
           >
-            <div className={`text-xs font-bold leading-tight ${isToday ? 'text-orange-600' : 'text-gray-700'}`}>
+            <div className={`text-xs font-bold leading-tight ${isToday ? 'text-orange-600' : 'text-[#333]'}`}>
               {format(day, 'd')}
             </div>
-            <div className={`leading-tight capitalize ${isToday ? 'text-orange-400' : 'text-gray-400'}`} style={{ fontSize: 9 }}>
+            <div className={`leading-tight capitalize ${isToday ? 'text-orange-400' : 'text-[#888]'}`} style={{ fontSize: 9 }}>
               {format(day, 'EEE', { locale: es }).slice(0, 2)}
             </div>
           </div>
@@ -167,6 +167,7 @@ function TimelineRow({ cabana, reservas, startDate, endDate, height = 40, onRese
   const numDays = differenceInDays(endDate, startDate) + 1
   const todayOffset = differenceInDays(today, startDate)
   const showToday = todayOffset >= 0 && todayOffset < numDays
+  const [tooltip, setTooltip] = useState(null)
 
   const relevantReservas = reservas.filter((r) => {
     if (r.cabana !== cabana) return false
@@ -188,7 +189,7 @@ function TimelineRow({ cabana, reservas, startDate, endDate, height = 40, onRese
             <div
               key={i}
               style={{ width: DAY_W, minWidth: DAY_W, flexShrink: 0 }}
-              className={`h-full border-r border-gray-100 ${isWeekend ? 'bg-gray-50' : 'bg-white'} ${isToday ? 'bg-orange-50' : ''}`}
+              className={`h-full border-r border-[#f0e6d8] ${isWeekend ? 'bg-[#fff4e8]' : 'bg-white'} ${isToday ? 'bg-orange-50' : ''}`}
             />
           )
         })}
@@ -206,44 +207,95 @@ function TimelineRow({ cabana, reservas, startDate, endDate, height = 40, onRese
       {relevantReservas.map((r) => {
         const ent = parseISO(r.fecha_entrada)
         const sal = parseISO(r.fecha_salida)
-        const clampedStart = ent < startDate ? startDate : ent
-        const clampedEnd = sal > endDate ? endDate : sal
+        const startsInView = ent >= startDate
+        const endsInView   = sal <= endDate
+        const clampedStart = startsInView ? ent : startDate
+        const clampedEnd   = endsInView   ? sal : endDate
         const dayStart = differenceInDays(clampedStart, startDate)
-        const daySpan = differenceInDays(clampedEnd, clampedStart) + 1
-        const left = dayStart * DAY_W
-        const width = Math.max(daySpan * DAY_W - 2, DAY_W - 2)
+        const daySpan  = differenceInDays(clampedEnd, clampedStart) + 1
 
-        const startsHere = ent >= startDate
-        const endsHere = sal <= endDate
-        const borderRadius = `${startsHere ? 6 : 0}px ${endsHere ? 6 : 0}px ${endsHere ? 6 : 0}px ${startsHere ? 6 : 0}px`
+        const consecutiveNext = endsInView
+          ? relevantReservas.find((r2) => r2.id !== r.id && r2.fecha_entrada === r.fecha_salida)
+          : null
+        const consecutivePrev = startsInView
+          ? relevantReservas.find((r2) => r2.id !== r.id && r2.fecha_salida === r.fecha_entrada)
+          : null
+
+        let left  = dayStart * DAY_W + 1
+        let width = daySpan * DAY_W - 2
+
+        if (consecutiveNext) width -= DAY_W / 2
+        if (consecutivePrev) { left += DAY_W / 2; width -= DAY_W / 2 }
+        width = Math.max(width, 10)
+
+        const roundedL = startsInView && !consecutivePrev ? 6 : 0
+        const roundedR = endsInView   && !consecutiveNext ? 6 : 0
+        const borderRadius = `${roundedL}px ${roundedR}px ${roundedR}px ${roundedL}px`
+
+        const tooltipLines = [r.nombre_apellido]
+        if (consecutivePrev) tooltipLines.unshift(`↑ Sale: ${consecutivePrev.nombre_apellido}`)
+        tooltipLines.push(`${r.codigo} · ${r.noches ?? ''} noches`)
+        if (consecutiveNext) tooltipLines.push(`↓ Entra: ${consecutiveNext.nombre_apellido}`)
 
         return (
-          <div
-            key={r.id}
-            style={{
-              position: 'absolute',
-              left: left + 1,
-              width,
-              top: height * 0.12,
-              height: height * 0.76,
-              backgroundColor: getCabanaColor(cabana),
-              borderRadius,
-              cursor: 'pointer',
-              overflow: 'hidden',
-              display: 'flex',
-              alignItems: 'center',
-              paddingLeft: 8,
-              paddingRight: 6,
-              zIndex: 5,
-            }}
-            onClick={() => onReservaClick(r)}
-          >
-            <span className="text-white font-semibold truncate" style={{ fontSize: 10 }}>
-              {r.codigo} · {r.nombre_apellido}
-            </span>
-          </div>
+          <Fragment key={r.id}>
+            <div
+              style={{
+                position: 'absolute',
+                left,
+                width,
+                top: height * 0.12,
+                height: height * 0.76,
+                backgroundColor: getCabanaColor(cabana),
+                borderRadius,
+                cursor: 'pointer',
+                overflow: 'hidden',
+                display: 'flex',
+                alignItems: 'center',
+                paddingLeft: 8,
+                paddingRight: 6,
+                zIndex: 5,
+              }}
+              onClick={() => onReservaClick(r)}
+              onMouseEnter={(e) => setTooltip({ x: e.clientX, y: e.clientY, lines: tooltipLines })}
+              onMouseMove={(e) => setTooltip((t) => t ? { ...t, x: e.clientX, y: e.clientY } : null)}
+              onMouseLeave={() => setTooltip(null)}
+            >
+              <span className="text-white font-semibold truncate" style={{ fontSize: 10 }}>
+                {r.codigo} · {r.nombre_apellido}
+              </span>
+            </div>
+            {consecutiveNext && endsInView && (
+              <div
+                style={{
+                  position: 'absolute',
+                  left: left + width + 1,
+                  top: height * 0.08,
+                  height: height * 0.84,
+                  width: 2,
+                  backgroundColor: 'rgba(255,255,255,0.9)',
+                  zIndex: 10,
+                  borderRadius: 1,
+                }}
+              />
+            )}
+          </Fragment>
         )
       })}
+
+      {/* Tooltip */}
+      {tooltip && (
+        <div
+          className="fixed z-50 bg-[#111] text-white text-xs rounded-lg px-3 py-2 pointer-events-none"
+          style={{ left: tooltip.x + 14, top: tooltip.y - 12, maxWidth: 220 }}
+        >
+          {tooltip.lines.map((line, i) => (
+            <div key={i} className={i === 0 && !line.startsWith('↑') ? 'font-semibold' : 'text-[#aaa] mt-0.5'}>
+              {line}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -262,16 +314,16 @@ function ReservaPopup({ reserva, onClose, onView }) {
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden"
+        className="bg-white rounded-[16px] border border-[#f0e6d8] w-full max-w-sm overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="px-5 py-4" style={{ backgroundColor: getCabanaColor(reserva.cabana) }}>
           <div className="flex items-start justify-between">
             <div>
               <p className="font-mono font-bold text-lg text-white">{reserva.codigo}</p>
-              <p className="text-sm" style={{ color: 'rgba(255,255,255,0.7)' }}>{reserva.cabana}</p>
+              <p className="text-sm" style={{ color: 'rgba(255,255,255,0.8)' }}>{reserva.cabana}</p>
             </div>
-            <span className={`text-xs px-2 py-1 rounded-full font-medium ${ESTADO_STYLES[reserva.estado] || 'bg-gray-100 text-gray-700'}`}>
+            <span className={ESTADO_STYLES[reserva.estado] || 'badge'}>
               {reserva.estado}
             </span>
           </div>
@@ -279,44 +331,44 @@ function ReservaPopup({ reserva, onClose, onView }) {
 
         <div className="px-5 py-4 space-y-3">
           <div>
-            <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Huésped</p>
-            <p className="font-semibold text-gray-800">{reserva.nombre_apellido}</p>
-            {reserva.celular && <p className="text-xs text-gray-500">{reserva.celular}</p>}
+            <p className="section-label mb-1">Huésped</p>
+            <p className="font-semibold text-[#111]">{reserva.nombre_apellido}</p>
+            {reserva.celular && <p className="text-xs text-[#888]">{reserva.celular}</p>}
           </div>
 
           <div className="grid grid-cols-2 gap-3 text-sm">
             <div>
-              <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Entrada</p>
-              <p className="font-medium text-gray-800">
+              <p className="section-label mb-1">Entrada</p>
+              <p className="font-medium text-[#333]">
                 {format(parseISO(reserva.fecha_entrada), 'dd/MM/yyyy', { locale: es })}
               </p>
             </div>
             <div>
-              <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Salida</p>
-              <p className="font-medium text-gray-800">
+              <p className="section-label mb-1">Salida</p>
+              <p className="font-medium text-[#333]">
                 {format(parseISO(reserva.fecha_salida), 'dd/MM/yyyy', { locale: es })}
               </p>
             </div>
             <div>
-              <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">PAX</p>
-              <p className="text-gray-800">{reserva.pax ?? '-'}</p>
+              <p className="section-label mb-1">PAX</p>
+              <p className="text-[#333]">{reserva.pax ?? '-'}</p>
             </div>
             <div>
-              <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Noches</p>
-              <p className="text-gray-800">{reserva.noches ?? '-'}</p>
+              <p className="section-label mb-1">Noches</p>
+              <p className="text-[#333]">{reserva.noches ?? '-'}</p>
             </div>
           </div>
 
           {reserva.monto_total > 0 && (
             <div className="flex gap-2">
-              <div className="flex-1 bg-gray-50 rounded-lg p-2.5 text-center">
-                <p className="text-xs text-gray-500">Total</p>
-                <p className="font-bold text-gray-800 text-sm">
+              <div className="flex-1 bg-[#fee7ef] rounded-[10px] p-2.5 text-center">
+                <p className="section-label mb-1">Total</p>
+                <p className="font-bold text-[#111] text-sm">
                   ${Number(reserva.monto_total).toLocaleString('es-AR')}
                 </p>
               </div>
-              <div className={`flex-1 rounded-lg p-2.5 text-center ${saldo > 0 ? 'bg-orange-50' : 'bg-green-50'}`}>
-                <p className={`text-xs ${saldo > 0 ? 'text-orange-500' : 'text-green-500'}`}>Saldo</p>
+              <div className={`flex-1 rounded-[10px] p-2.5 text-center ${saldo > 0 ? 'bg-orange-50' : 'bg-green-50'}`}>
+                <p className={`section-label mb-1 ${saldo > 0 ? '!text-orange-600' : '!text-green-600'}`}>Saldo</p>
                 <p className={`font-bold text-sm ${saldo > 0 ? 'text-orange-700' : 'text-green-700'}`}>
                   ${saldo.toLocaleString('es-AR')}
                 </p>
@@ -326,15 +378,12 @@ function ReservaPopup({ reserva, onClose, onView }) {
         </div>
 
         <div className="px-5 pb-5 flex gap-3">
-          <button
-            onClick={onClose}
-            className="flex-1 border border-gray-300 rounded-lg py-2 text-sm font-medium hover:bg-gray-50 transition-colors"
-          >
+          <button onClick={onClose} className="btn-secondary flex-1 py-2">
             Cerrar
           </button>
           <button
             onClick={onView}
-            className="flex-1 text-white rounded-lg py-2 text-sm font-medium transition-colors"
+            className="flex-1 text-white rounded-[10px] py-2 text-sm font-semibold transition-all hover:-translate-y-px"
             style={{ backgroundColor: getCabanaColor(reserva.cabana) }}
           >
             Ver detalle
@@ -372,7 +421,6 @@ export default function Disponibilidad() {
       })
   }, [])
 
-  // Cabin status today
   const cabanaStatus = useMemo(() => {
     const tStr = todayStr()
     const map = {}
@@ -401,12 +449,12 @@ export default function Disponibilidad() {
   const occupiedCount = CABANAS.filter((c) => cabanaStatus[c]?.occupied).length
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full fade-in">
       {/* ── Header ── */}
       <div className="flex flex-wrap items-end gap-4 mb-5">
         <div>
-          <h2 className="text-2xl font-bold text-gray-800">Disponibilidad</h2>
-          <p className="text-sm text-gray-500 mt-0.5">
+          <h2 className="text-[28px] font-bold text-[#111111]">Disponibilidad</h2>
+          <p className="text-sm text-[#888] mt-0.5">
             {occupiedCount} de {CABANAS.length} cabañas ocupadas hoy
           </p>
         </div>
@@ -414,23 +462,19 @@ export default function Disponibilidad() {
           <CalendarPicker label="Desde" value={startDate} onChange={handleStartDate} />
           <CalendarPicker label="Hasta" value={endDate} onChange={handleEndDate} />
           <div>
-            <p className="text-xs text-gray-500 mb-1 font-medium invisible">btn</p>
+            <p className="section-label mb-1 invisible">btn</p>
             <button
               onClick={() => { setShowAll(!showAll); setSelectedCabana(null) }}
-              className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors shadow-sm ${
-                showAll
-                  ? 'bg-primary-600 text-white border-primary-600'
-                  : 'bg-white text-gray-700 border-gray-300 hover:border-primary-400'
-              }`}
+              className={showAll ? 'btn-primary' : 'btn-secondary'}
             >
               {showAll ? '← Por cabaña' : 'Ver todas'}
             </button>
           </div>
           <div>
-            <p className="text-xs text-gray-500 mb-1 font-medium invisible">btn</p>
+            <p className="section-label mb-1 invisible">btn</p>
             <button
               onClick={() => { setStartDate(today); setEndDate(addDays(today, 29)) }}
-              className="px-3 py-2 rounded-lg text-sm text-primary-600 border border-primary-200 bg-white hover:bg-primary-50 transition-colors shadow-sm"
+              className="btn-secondary"
             >
               Hoy
             </button>
@@ -439,15 +483,15 @@ export default function Disponibilidad() {
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-24 text-gray-400 text-sm">
+        <div className="flex items-center justify-center py-24 text-[#888] text-sm">
           Cargando disponibilidad...
         </div>
       ) : showAll ? (
         /* ── Vista todas las cabañas ── */
-        <div className="bg-white rounded-xl shadow border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-[16px] border border-[#f0e6d8] overflow-hidden">
           <div className="overflow-x-auto">
             {/* Leyenda */}
-            <div className="flex items-center gap-5 px-4 py-3 border-b border-gray-100 text-xs text-gray-500">
+            <div className="flex items-center gap-5 px-4 py-3 border-b border-[#f0e6d8] text-xs text-[#888]">
               <span className="flex items-center gap-1.5">
                 <span className="w-3 h-3 rounded bg-white border-2 border-green-400 inline-block" />
                 Libre
@@ -473,10 +517,10 @@ export default function Disponibilidad() {
               return (
                 <div
                   key={cabana}
-                  className={`flex items-stretch border-b border-gray-100 last:border-0 ${ci % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'}`}
+                  className={`flex items-stretch border-b border-[#f0e6d8] last:border-0 ${ci % 2 === 0 ? 'bg-white' : 'bg-[#fee7ef]/30'}`}
                 >
                   <div
-                    className="flex items-center px-3 gap-2 border-r border-gray-200 flex-shrink-0 cursor-pointer hover:bg-gray-100 transition-colors"
+                    className="flex items-center px-3 gap-2 border-r border-[#f0e6d8] flex-shrink-0 cursor-pointer hover:bg-[#fee7ef] transition-colors"
                     style={{ width: 136, borderLeft: `3px solid ${getCabanaColor(cabana)}` }}
                     onClick={() => { setSelectedCabana(cabana); setShowAll(false) }}
                   >
@@ -484,7 +528,7 @@ export default function Disponibilidad() {
                       className={`w-2 h-2 rounded-full flex-shrink-0 ${st?.occupied ? '' : 'bg-green-400'}`}
                       style={st?.occupied ? { backgroundColor: getCabanaColor(cabana) } : {}}
                     />
-                    <span className="text-xs font-semibold text-gray-700 truncate">{cabana}</span>
+                    <span className="text-xs font-semibold text-[#333] truncate">{cabana}</span>
                   </div>
                   <div className="overflow-hidden" style={{ width: numDays * DAY_W }}>
                     <TimelineRow
@@ -506,9 +550,7 @@ export default function Disponibilidad() {
         <div className="flex gap-4 flex-1 min-h-0">
           {/* Panel izquierdo: lista cabañas */}
           <div className="w-52 flex-shrink-0 flex flex-col gap-1.5 overflow-y-auto pr-1">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1 mb-1">
-              Cabañas
-            </p>
+            <p className="section-label px-1 mb-1">Cabañas</p>
             {CABANAS.map((cabana) => {
               const st = cabanaStatus[cabana]
               const selected = selectedCabana === cabana
@@ -521,14 +563,14 @@ export default function Disponibilidad() {
                     borderLeftWidth: 3,
                     backgroundColor: `${getCabanaColor(cabana)}14`,
                   } : {}}
-                  className={`w-full text-left px-3 py-2.5 rounded-xl border transition-all text-sm ${
+                  className={`w-full text-left px-3 py-2.5 rounded-[12px] border transition-all text-sm ${
                     selected
-                      ? 'shadow-sm'
-                      : 'border-gray-100 bg-white hover:border-gray-200 hover:bg-gray-50'
+                      ? ''
+                      : 'border-[#f0e6d8] bg-white hover:border-[#d2ab84] hover:bg-[#fee7ef]'
                   }`}
                 >
                   <div className="flex items-center justify-between mb-0.5">
-                    <span className="font-semibold text-gray-800">{cabana}</span>
+                    <span className="font-semibold text-[#111]">{cabana}</span>
                     <span
                       className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${st?.occupied ? '' : 'bg-green-400'}`}
                       style={st?.occupied ? { backgroundColor: getCabanaColor(cabana) } : {}}
@@ -539,7 +581,7 @@ export default function Disponibilidad() {
                       {st.current.nombre_apellido.split(' ').slice(0, 2).join(' ')}
                     </p>
                   ) : st?.upcoming ? (
-                    <p className="text-xs text-gray-400 truncate">
+                    <p className="text-xs text-[#888] truncate">
                       Próx: {format(parseISO(st.upcoming.fecha_entrada), 'dd/MM')}
                     </p>
                   ) : (
@@ -551,12 +593,12 @@ export default function Disponibilidad() {
           </div>
 
           {/* Panel derecho: timeline */}
-          <div className="flex-1 bg-white rounded-xl shadow border border-gray-200 overflow-hidden flex flex-col">
+          <div className="flex-1 bg-white rounded-[16px] border border-[#f0e6d8] overflow-hidden flex flex-col">
             {selectedCabana ? (
               <>
                 {/* Header del panel */}
                 <div
-                  className="flex items-center justify-between px-5 py-3 border-b border-gray-200"
+                  className="flex items-center justify-between px-5 py-3 border-b border-[#f0e6d8]"
                   style={{ backgroundColor: `${getCabanaColor(selectedCabana)}0d` }}
                 >
                   <div className="flex items-center gap-3">
@@ -565,7 +607,7 @@ export default function Disponibilidad() {
                       style={{ backgroundColor: getCabanaColor(selectedCabana) }}
                     />
                     <div>
-                      <h3 className="font-bold text-gray-800">{selectedCabana}</h3>
+                      <h3 className="font-bold text-[#111]">{selectedCabana}</h3>
                       <p
                         className="text-xs font-medium"
                         style={{ color: cabanaStatus[selectedCabana]?.occupied ? getCabanaColor(selectedCabana) : '#16a34a' }}
@@ -576,7 +618,7 @@ export default function Disponibilidad() {
                   </div>
 
                   {/* Leyenda */}
-                  <div className="flex items-center gap-4 text-xs text-gray-500">
+                  <div className="flex items-center gap-4 text-xs text-[#888]">
                     <span className="flex items-center gap-1">
                       <span className="w-3 h-3 rounded inline-block" style={{ backgroundColor: getCabanaColor(selectedCabana) }} />
                       Reserva
@@ -604,10 +646,8 @@ export default function Disponibilidad() {
                 </div>
 
                 {/* Reservas del período */}
-                <div className="border-t border-gray-100 px-5 py-3">
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                    Reservas en el período
-                  </p>
+                <div className="border-t border-[#f0e6d8] px-5 py-3">
+                  <p className="section-label mb-2">Reservas en el período</p>
                   <div className="space-y-1.5 max-h-40 overflow-y-auto">
                     {reservas
                       .filter((r) => {
@@ -620,14 +660,14 @@ export default function Disponibilidad() {
                       .map((r) => (
                         <div
                           key={r.id}
-                          className="flex items-center justify-between text-sm bg-gray-50 rounded-lg px-3 py-2 cursor-pointer hover:bg-blue-50 transition-colors border border-gray-100"
+                          className="flex items-center justify-between text-sm bg-[#fee7ef] border border-[#f0e6d8] rounded-[10px] px-3 py-2 cursor-pointer hover:border-[#d2ab84] transition-colors"
                           onClick={() => setPopup(r)}
                         >
                           <div className="flex items-center gap-2">
                             <span className="font-mono text-xs font-semibold" style={{ color: getCabanaColor(selectedCabana) }}>{r.codigo}</span>
-                            <span className="text-gray-700 font-medium truncate">{r.nombre_apellido}</span>
+                            <span className="text-[#333] font-medium truncate">{r.nombre_apellido}</span>
                           </div>
-                          <span className="text-xs text-gray-500 flex-shrink-0 ml-2">
+                          <span className="text-xs text-[#888] flex-shrink-0 ml-2">
                             {format(parseISO(r.fecha_entrada), 'dd/MM')} – {format(parseISO(r.fecha_salida), 'dd/MM')}
                           </span>
                         </div>
@@ -638,18 +678,18 @@ export default function Disponibilidad() {
                       const sal = parseISO(r.fecha_salida)
                       return sal >= startDate && ent <= endDate
                     }).length === 0 && (
-                      <p className="text-xs text-gray-400 py-1">Sin reservas en el período seleccionado</p>
+                      <p className="text-xs text-[#aaa] py-1">Sin reservas en el período seleccionado</p>
                     )}
                   </div>
                 </div>
               </>
             ) : (
-              <div className="flex flex-col items-center justify-center h-full text-center p-8 text-gray-400">
-                <svg className="w-12 h-12 mb-3 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="flex flex-col items-center justify-center h-full text-center p-8">
+                <svg className="w-12 h-12 mb-3 text-[#f0e6d8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
-                <p className="text-sm font-medium text-gray-500">Seleccioná una cabaña</p>
-                <p className="text-xs text-gray-400 mt-1">o usá "Ver todas" para el resumen completo</p>
+                <p className="text-sm font-medium text-[#888]">Seleccioná una cabaña</p>
+                <p className="text-xs text-[#aaa] mt-1">o usá "Ver todas" para el resumen completo</p>
               </div>
             )}
           </div>

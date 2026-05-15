@@ -24,55 +24,70 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen bg-primary-900 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-8">
-        <h1 className="text-2xl font-bold text-primary-800 text-center mb-1">
-          Cabañas VIP
-        </h1>
-        <p className="text-gray-500 text-sm text-center mb-8">Sistema de gestión de reservas</p>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Email
-            </label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-              placeholder="usuario@email.com"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Contraseña
-            </label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-              placeholder="••••••••"
-            />
-          </div>
-
-          {error && (
-            <p className="text-red-600 text-sm bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-              {error}
-            </p>
-          )}
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-primary-600 hover:bg-primary-700 disabled:opacity-50 text-white font-medium rounded-lg py-2 transition-colors"
+    <div
+      className="min-h-screen flex items-center justify-center p-4"
+      style={{ background: 'linear-gradient(150deg, #ffffff 0%, #fee7ef 100%)' }}
+    >
+      <div className="w-full max-w-sm">
+        {/* Brand */}
+        <div className="text-center mb-8">
+          <div
+            className="w-14 h-14 rounded-[16px] flex items-center justify-center mx-auto mb-5"
+            style={{ backgroundColor: '#d2ab84' }}
           >
-            {loading ? 'Ingresando...' : 'Ingresar'}
-          </button>
-        </form>
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="white">
+              <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z" />
+            </svg>
+          </div>
+          <h1 className="text-[30px] font-bold text-[#111111] leading-tight">Cabañas VIP</h1>
+          <p className="text-sm text-[#888] mt-1.5">Sistema de gestión de reservas</p>
+        </div>
+
+        {/* Card */}
+        <div className="bg-white rounded-[16px] border border-[#f0e6d8] p-8">
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="section-label block mb-1.5">Email</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                className="field"
+                placeholder="usuario@email.com"
+                autoComplete="email"
+                autoFocus
+              />
+            </div>
+
+            <div>
+              <label className="section-label block mb-1.5">Contraseña</label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                className="field"
+                placeholder="••••••••"
+                autoComplete="current-password"
+              />
+            </div>
+
+            {error && (
+              <div className="bg-red-50 border border-red-200 text-red-700 rounded-[10px] px-4 py-3 text-sm">
+                {error}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="btn-primary w-full py-3 mt-1 disabled:opacity-50"
+            >
+              {loading ? 'Ingresando...' : 'Ingresar'}
+            </button>
+          </form>
+        </div>
       </div>
     </div>
   )

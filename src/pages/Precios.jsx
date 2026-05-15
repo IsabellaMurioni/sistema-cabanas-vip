@@ -1,277 +1,464 @@
-import { useEffect, useState } from 'react'
+﻿import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { format, parseISO } from 'date-fns'
+import { format, parseISO, isWithinInterval, startOfDay } from 'date-fns'
 import { es } from 'date-fns/locale'
 
-function fmt(d) {
-  if (!d) return '-'
+const PAX_LIST = [2, 3, 4, 5, 6, 7]
+
+function fmtFecha(d) {
+  if (!d) return 'en adelante'
   return format(parseISO(d), 'dd/MM/yyyy', { locale: es })
 }
 
 function money(v) {
-  if (v === null || v === undefined || v === '') return '-'
+  if (!v && v !== 0) return '$0'
   return `$${Number(v).toLocaleString('es-AR')}`
 }
 
-const ic = 'border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500'
+function isPeriodoActivo(p) {
+  const hoy = startOfDay(new Date())
+  const inicio = startOfDay(parseISO(p.fecha_inicio))
+  if (!p.fecha_fin) return hoy >= inicio
+  const fin = startOfDay(parseISO(p.fecha_fin))
+  return isWithinInterval(hoy, { start: inicio, end: fin })
+}
 
-const EMPTY_NEW = { nombre: '', fecha_inicio: '', fecha_fin: '', precio_noche: '' }
+const EMPTY_PERIODO = {
+  nombre: '',
+  fecha_inicio: '',
+  fecha_fin: '',
+  minimo_noches: 1,
+}
+
+function PaxIcon({ count }) {
+  return (
+    <span className="inline-flex items-center gap-1">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" className="text-[#888]">
+        <path d="M12 12c2.7 0 5-2.3 5-5s-2.3-5-5-5-5 2.3-5 5 2.3 5 5 5zm0 2c-3.3 0-10 1.7-10 5v2h20v-2c0-3.3-6.7-5-10-5z"/>
+      </svg>
+      <span className="text-xs text-[#888] font-semibold">{count}</span>
+    </span>
+  )
+}
 
 export default function Precios() {
-  const [precios, setPrecios]       = useState([])
+  const [periodos, setPeriodos]     = useState([])
   const [loading, setLoading]       = useState(true)
-  const [editingId, setEditingId]   = useState(null)
-  const [editForm, setEditForm]     = useState({})
+  const [expanded, setExpanded]     = useState({})
+  const [editing, setEditing]       = useState({})
+  const [saving, setSaving]         = useState(null)
   const [showNew, setShowNew]       = useState(false)
-  const [newForm, setNewForm]       = useState(EMPTY_NEW)
-  const [saving, setSaving]         = useState(false)
+  const [newForm, setNewForm]       = useState(EMPTY_PERIODO)
+  const [savingNew, setSavingNew]   = useState(false)
   const [error, setError]           = useState('')
+  const [editNombre, setEditNombre] = useState({})
+  const [editingNombre, setEditingNombre] = useState(null)
 
-  const fetchPrecios = async () => {
+  const fetchAll = async () => {
     setLoading(true)
-    const { data } = await supabase.from('precios').select('*').order('fecha_inicio')
-    setPrecios(data || [])
+    const { data: pds } = await supabase
+      .from('periodos_precios')
+      .select('*')
+      .order('orden')
+
+    const { data: precios } = await supabase
+      .from('precios_pax')
+      .select('*')
+
+    const enriched = (pds || []).map((p) => ({
+      ...p,
+      precios: (precios || []).filter((x) => x.periodo_id === p.id),
+    }))
+    setPeriodos(enriched)
     setLoading(false)
   }
 
-  useEffect(() => { fetchPrecios() }, [])
+  useEffect(() => { fetchAll() }, [])
 
-  const startEdit = (p) => {
-    setEditingId(p.id)
-    setEditForm({ nombre: p.nombre, fecha_inicio: p.fecha_inicio, fecha_fin: p.fecha_fin, precio_noche: String(p.precio_noche) })
-    setError('')
-  }
+  const toggleExpand = (id) =>
+    setExpanded((e) => ({ ...e, [id]: !e[id] }))
 
-  const cancelEdit = () => { setEditingId(null); setEditForm({}); setError('') }
-
-  const saveEdit = async () => {
-    if (!editForm.nombre || !editForm.fecha_inicio || !editForm.fecha_fin || !editForm.precio_noche) {
-      setError('Completá todos los campos del período.')
-      return
-    }
-    setSaving(true)
-    setError('')
-    const { error: err } = await supabase.from('precios').update({
-      nombre:       editForm.nombre,
-      fecha_inicio: editForm.fecha_inicio,
-      fecha_fin:    editForm.fecha_fin,
-      precio_noche: Number(editForm.precio_noche),
-    }).eq('id', editingId)
-    setSaving(false)
-    if (err) { setError(err.message); return }
-    setEditingId(null)
-    fetchPrecios()
-  }
-
-  const saveNew = async () => {
-    if (!newForm.nombre || !newForm.fecha_inicio || !newForm.fecha_fin || !newForm.precio_noche) {
-      setError('Completá todos los campos del período.')
-      return
-    }
-    setSaving(true)
-    setError('')
-    const { error: err } = await supabase.from('precios').insert({
-      nombre:       newForm.nombre,
-      fecha_inicio: newForm.fecha_inicio,
-      fecha_fin:    newForm.fecha_fin,
-      precio_noche: Number(newForm.precio_noche),
+  const startEdit = (periodo) => {
+    const map = {}
+    PAX_LIST.forEach((pax) => {
+      const row = periodo.precios.find((r) => r.pax === pax) || {}
+      map[pax] = {
+        noche:  String(row.precio_noche  ?? 0),
+        semana: String(row.precio_semana ?? 0),
+        rowId:  row.id,
+      }
     })
-    setSaving(false)
-    if (err) { setError(err.message); return }
-    setShowNew(false)
-    setNewForm(EMPTY_NEW)
-    fetchPrecios()
+    setEditing((e) => ({ ...e, [periodo.id]: map }))
+    setExpanded((e) => ({ ...e, [periodo.id]: true }))
+  }
+
+  const cancelEdit = (id) =>
+    setEditing((e) => { const n = { ...e }; delete n[id]; return n })
+
+  const handlePriceChange = (periodoId, pax, field, value) => {
+    setEditing((e) => ({
+      ...e,
+      [periodoId]: {
+        ...e[periodoId],
+        [pax]: { ...e[periodoId][pax], [field]: value },
+      },
+    }))
+  }
+
+  const saveEdit = async (periodo) => {
+    const map = editing[periodo.id]
+    if (!map) return
+    setSaving(periodo.id)
+    setError('')
+
+    const ops = PAX_LIST.map((pax) => {
+      const { noche, semana, rowId } = map[pax]
+      if (rowId) {
+        return supabase.from('precios_pax').update({
+          precio_noche:  Number(noche)  || 0,
+          precio_semana: Number(semana) || 0,
+        }).eq('id', rowId)
+      }
+      return supabase.from('precios_pax').insert({
+        periodo_id:    periodo.id,
+        pax,
+        precio_noche:  Number(noche)  || 0,
+        precio_semana: Number(semana) || 0,
+      })
+    })
+
+    const results = await Promise.all(ops)
+    const firstErr = results.find((r) => r.error)
+    if (firstErr?.error) {
+      setError(firstErr.error.message)
+    } else {
+      cancelEdit(periodo.id)
+      await fetchAll()
+    }
+    setSaving(null)
+  }
+
+  const saveNombre = async (id) => {
+    const nombre = editNombre[id]
+    if (!nombre?.trim()) return
+    await supabase.from('periodos_precios').update({ nombre }).eq('id', id)
+    setEditingNombre(null)
+    fetchAll()
   }
 
   const handleDelete = async (id) => {
-    if (!confirm('¿Eliminar este período de precios?')) return
-    await supabase.from('precios').delete().eq('id', id)
-    fetchPrecios()
+    if (!confirm('¿Eliminar este período y todos sus precios?')) return
+    await supabase.from('periodos_precios').delete().eq('id', id)
+    fetchAll()
   }
 
-  if (loading) return <p className="text-gray-500 text-center py-16">Cargando...</p>
+  const saveNew = async () => {
+    if (!newForm.nombre || !newForm.fecha_inicio) {
+      setError('Completá al menos el nombre y la fecha de inicio.')
+      return
+    }
+    setSavingNew(true)
+    setError('')
+
+    const maxOrden = periodos.length ? Math.max(...periodos.map((p) => p.orden)) : 0
+
+    const { data: inserted, error: err } = await supabase
+      .from('periodos_precios')
+      .insert({
+        nombre:        newForm.nombre,
+        fecha_inicio:  newForm.fecha_inicio,
+        fecha_fin:     newForm.fecha_fin || null,
+        minimo_noches: Number(newForm.minimo_noches) || 1,
+        orden:         maxOrden + 1,
+      })
+      .select('id')
+      .single()
+
+    if (err) { setError(err.message); setSavingNew(false); return }
+
+    await supabase.from('precios_pax').insert(
+      PAX_LIST.map((pax) => ({
+        periodo_id: inserted.id, pax,
+        precio_noche: 0, precio_semana: 0,
+      }))
+    )
+
+    setSavingNew(false)
+    setShowNew(false)
+    setNewForm(EMPTY_PERIODO)
+    fetchAll()
+  }
+
+  if (loading) return (
+    <div className="flex items-center justify-center py-24">
+      <p className="text-[#d2ab84] text-lg font-medium">Cargando precios...</p>
+    </div>
+  )
 
   return (
-    <div className="max-w-4xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
+    <div className="max-w-4xl mx-auto fade-in">
+
+      {/* Header */}
+      <div className="flex items-end justify-between mb-8">
         <div>
-          <h2 className="text-2xl font-bold text-gray-800">Precios</h2>
-          <p className="text-sm text-gray-500 mt-0.5">
-            Al crear una reserva, el monto se calcula con el precio del período que coincide con la fecha de entrada.
+          <h1 className="text-[28px] font-bold text-[#111111]">Temporadas &amp; Precios</h1>
+          <p className="text-sm text-[#888] mt-1">
+            Precios por PAX y período. Al crear una reserva se calcula el total automáticamente.
           </p>
         </div>
-        <button
-          onClick={() => { setShowNew(true); setError('') }}
-          className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-        >
+        <button onClick={() => { setShowNew(true); setError('') }} className="btn-primary">
           + Nuevo período
         </button>
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm mb-4">
+        <div className="bg-[#fee2e2] border border-red-200 text-red-700 rounded-[10px] px-4 py-3 text-sm mb-5">
           {error}
         </div>
       )}
 
-      <div className="bg-white rounded-xl shadow overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b text-left text-gray-500 text-xs uppercase tracking-wide bg-gray-50">
-              <th className="px-5 py-3 font-medium">Período</th>
-              <th className="px-5 py-3 font-medium">Desde</th>
-              <th className="px-5 py-3 font-medium">Hasta</th>
-              <th className="px-5 py-3 font-medium">Precio / noche</th>
-              <th className="px-5 py-3 font-medium"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {precios.map((p) => (
-              <tr key={p.id} className="border-b last:border-0 hover:bg-gray-50">
-                {editingId === p.id ? (
-                  <>
-                    <td className="px-4 py-2">
-                      <input
-                        className={ic}
-                        value={editForm.nombre}
-                        onChange={e => setEditForm(f => ({ ...f, nombre: e.target.value }))}
-                        placeholder="Nombre del período"
-                      />
-                    </td>
-                    <td className="px-4 py-2">
-                      <input
-                        type="date"
-                        className={ic}
-                        value={editForm.fecha_inicio}
-                        onChange={e => setEditForm(f => ({ ...f, fecha_inicio: e.target.value }))}
-                      />
-                    </td>
-                    <td className="px-4 py-2">
-                      <input
-                        type="date"
-                        className={ic}
-                        value={editForm.fecha_fin}
-                        onChange={e => setEditForm(f => ({ ...f, fecha_fin: e.target.value }))}
-                      />
-                    </td>
-                    <td className="px-4 py-2">
-                      <input
-                        type="number"
-                        min={0}
-                        className={`${ic} w-36`}
-                        value={editForm.precio_noche}
-                        onChange={e => setEditForm(f => ({ ...f, precio_noche: e.target.value }))}
-                        placeholder="0"
-                      />
-                    </td>
-                    <td className="px-4 py-2">
-                      <div className="flex gap-2">
-                        <button
-                          onClick={saveEdit}
-                          disabled={saving}
-                          className="text-xs bg-primary-600 hover:bg-primary-700 text-white px-3 py-1.5 rounded-lg font-medium disabled:opacity-50 transition-colors"
-                        >
-                          {saving ? 'Guardando...' : 'Guardar'}
-                        </button>
-                        <button
-                          onClick={cancelEdit}
-                          className="text-xs border border-gray-300 hover:bg-gray-50 text-gray-700 px-3 py-1.5 rounded-lg font-medium transition-colors"
-                        >
-                          Cancelar
-                        </button>
-                      </div>
-                    </td>
-                  </>
-                ) : (
-                  <>
-                    <td className="px-5 py-3 font-medium text-gray-800">{p.nombre}</td>
-                    <td className="px-5 py-3 text-gray-600">{fmt(p.fecha_inicio)}</td>
-                    <td className="px-5 py-3 text-gray-600">{fmt(p.fecha_fin)}</td>
-                    <td className="px-5 py-3 font-semibold text-gray-800">{money(p.precio_noche)}</td>
-                    <td className="px-5 py-3">
-                      <div className="flex gap-3">
-                        <button
-                          onClick={() => startEdit(p)}
-                          className="text-xs text-primary-600 hover:text-primary-800 font-medium"
-                        >
-                          Editar
-                        </button>
-                        <button
-                          onClick={() => handleDelete(p.id)}
-                          className="text-xs text-red-500 hover:text-red-700 font-medium"
-                        >
-                          Eliminar
-                        </button>
-                      </div>
-                    </td>
-                  </>
-                )}
-              </tr>
-            ))}
+      {/* New period form */}
+      {showNew && (
+        <div className="card mb-6 animate-fade-in">
+          <h3 className="text-[18px] font-semibold text-[#111111] mb-4">Nuevo período</h3>
+          <div className="grid grid-cols-2 gap-4 mb-4">
+            <div className="col-span-2">
+              <label className="section-label block mb-1.5">Nombre del período</label>
+              <input
+                className="field"
+                placeholder="ej: Temporada Alta"
+                value={newForm.nombre}
+                onChange={(e) => setNewForm((f) => ({ ...f, nombre: e.target.value }))}
+                autoFocus
+              />
+            </div>
+            <div>
+              <label className="section-label block mb-1.5">Fecha inicio</label>
+              <input
+                type="date"
+                className="field"
+                value={newForm.fecha_inicio}
+                onChange={(e) => setNewForm((f) => ({ ...f, fecha_inicio: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="section-label block mb-1.5">Fecha fin <span className="text-[#aaa] normal-case font-normal">(vacío = en adelante)</span></label>
+              <input
+                type="date"
+                className="field"
+                value={newForm.fecha_fin}
+                onChange={(e) => setNewForm((f) => ({ ...f, fecha_fin: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="section-label block mb-1.5">Mínimo de noches</label>
+              <input
+                type="number"
+                min={1}
+                className="field"
+                value={newForm.minimo_noches}
+                onChange={(e) => setNewForm((f) => ({ ...f, minimo_noches: e.target.value }))}
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-3">
+            <button onClick={() => { setShowNew(false); setNewForm(EMPTY_PERIODO); setError('') }} className="btn-secondary">
+              Cancelar
+            </button>
+            <button onClick={saveNew} disabled={savingNew} className="btn-primary">
+              {savingNew ? 'Guardando...' : 'Crear período'}
+            </button>
+          </div>
+        </div>
+      )}
 
-            {showNew && (
-              <tr className="border-b last:border-0 bg-blue-50">
-                <td className="px-4 py-2">
-                  <input
-                    className={ic}
-                    placeholder="Nombre del período"
-                    value={newForm.nombre}
-                    onChange={e => setNewForm(f => ({ ...f, nombre: e.target.value }))}
-                    autoFocus
-                  />
-                </td>
-                <td className="px-4 py-2">
-                  <input
-                    type="date"
-                    className={ic}
-                    value={newForm.fecha_inicio}
-                    onChange={e => setNewForm(f => ({ ...f, fecha_inicio: e.target.value }))}
-                  />
-                </td>
-                <td className="px-4 py-2">
-                  <input
-                    type="date"
-                    className={ic}
-                    value={newForm.fecha_fin}
-                    onChange={e => setNewForm(f => ({ ...f, fecha_fin: e.target.value }))}
-                  />
-                </td>
-                <td className="px-4 py-2">
-                  <input
-                    type="number"
-                    min={0}
-                    className={`${ic} w-36`}
-                    placeholder="0"
-                    value={newForm.precio_noche}
-                    onChange={e => setNewForm(f => ({ ...f, precio_noche: e.target.value }))}
-                  />
-                </td>
-                <td className="px-4 py-2">
-                  <div className="flex gap-2">
-                    <button
-                      onClick={saveNew}
-                      disabled={saving}
-                      className="text-xs bg-primary-600 hover:bg-primary-700 text-white px-3 py-1.5 rounded-lg font-medium disabled:opacity-50 transition-colors"
-                    >
-                      {saving ? 'Guardando...' : 'Guardar'}
-                    </button>
-                    <button
-                      onClick={() => { setShowNew(false); setNewForm(EMPTY_NEW); setError('') }}
-                      className="text-xs border border-gray-300 hover:bg-gray-50 text-gray-700 px-3 py-1.5 rounded-lg font-medium transition-colors"
-                    >
-                      Cancelar
-                    </button>
+      {/* Period cards */}
+      <div className="space-y-4">
+        {periodos.map((periodo) => {
+          const activo    = isPeriodoActivo(periodo)
+          const isExpanded = expanded[periodo.id]
+          const isEditing  = Boolean(editing[periodo.id])
+
+          return (
+            <div
+              key={periodo.id}
+              className="bg-[#fee7ef] rounded-[16px] border transition-all"
+              style={{
+                borderColor: activo ? '#d2ab84' : '#f0e6d8',
+                borderLeftWidth: activo ? 4 : 1,
+              }}
+            >
+              {/* Card header */}
+              <div
+                className="flex items-center justify-between px-6 py-4 cursor-pointer select-none"
+                onClick={() => !isEditing && toggleExpand(periodo.id)}
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  {activo && (
+                    <span className="flex-shrink-0 bg-[#d1fae5] text-[#065f46] text-xs font-semibold px-2.5 py-1 rounded-[8px]">
+                      ACTIVO
+                    </span>
+                  )}
+                  <div>
+                    {editingNombre === periodo.id ? (
+                      <input
+                        className="field font-semibold text-[#111111] min-w-[280px]"
+                        value={editNombre[periodo.id] ?? periodo.nombre}
+                        onChange={(e) => setEditNombre((n) => ({ ...n, [periodo.id]: e.target.value }))}
+                        onClick={(e) => e.stopPropagation()}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') saveNombre(periodo.id)
+                          if (e.key === 'Escape') setEditingNombre(null)
+                        }}
+                        autoFocus
+                      />
+                    ) : (
+                      <span className="text-[18px] font-semibold text-[#111111]">
+                        {periodo.nombre}
+                      </span>
+                    )}
+                    <div className="flex items-center gap-3 mt-1">
+                      <span className="text-xs text-[#888]">
+                        {fmtFecha(periodo.fecha_inicio)} → {fmtFecha(periodo.fecha_fin)}
+                      </span>
+                      <span className="inline-flex items-center gap-1 bg-[#d2ab84] text-white text-[10px] font-semibold px-2 py-0.5 rounded-full">
+                        mín. {periodo.minimo_noches} {periodo.minimo_noches === 1 ? 'noche' : 'noches'}
+                      </span>
+                    </div>
                   </div>
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+                </div>
 
-        {precios.length === 0 && !showNew && (
-          <p className="text-gray-400 text-center py-12 text-sm">
-            No hay períodos configurados. Hacé clic en &ldquo;+ Nuevo período&rdquo; para agregar el primero.
-          </p>
+                <div className="flex items-center gap-2 flex-shrink-0 ml-4">
+                  {editingNombre !== periodo.id && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setEditingNombre(periodo.id)
+                        setEditNombre((n) => ({ ...n, [periodo.id]: periodo.nombre }))
+                      }}
+                      className="text-xs text-[#888] hover:text-[#333] px-2 py-1 rounded-[8px] transition-colors"
+                    >
+                      Renombrar
+                    </button>
+                  )}
+                  {editingNombre === periodo.id && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); saveNombre(periodo.id) }}
+                      className="btn-primary text-xs px-3 py-1.5"
+                    >
+                      OK
+                    </button>
+                  )}
+                  {!isEditing ? (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); startEdit(periodo) }}
+                      className="btn-secondary text-xs px-3 py-1.5"
+                    >
+                      Editar precios
+                    </button>
+                  ) : (
+                    <div className="flex gap-2">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); saveEdit(periodo) }}
+                        disabled={saving === periodo.id}
+                        className="btn-primary text-xs px-3 py-1.5"
+                      >
+                        {saving === periodo.id ? 'Guardando...' : 'Guardar'}
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); cancelEdit(periodo.id) }}
+                        className="btn-secondary text-xs px-3 py-1.5"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  )}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleDelete(periodo.id) }}
+                    className="text-xs text-red-400 hover:text-red-600 px-2 py-1 rounded transition-colors"
+                  >
+                    ✕
+                  </button>
+                  <span className="text-[#888] text-sm ml-1">
+                    {isExpanded ? '▲' : '▼'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Expandable price table */}
+              {(isExpanded || isEditing) && (
+                <div className="px-6 pb-6">
+                  <div style={{ borderTop: '1px solid #f0e6d8' }} className="pt-4">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr style={{ borderBottom: '1px solid #f0e6d8' }}>
+                          <th className="text-left pb-2 section-label w-32">PAX</th>
+                          <th className="text-right pb-2 section-label">Por noche</th>
+                          <th className="text-right pb-2 section-label">Por semana</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {PAX_LIST.map((pax) => {
+                          const row  = periodo.precios.find((r) => r.pax === pax) || {}
+                          const eRow = editing[periodo.id]?.[pax]
+
+                          return (
+                            <tr key={pax} style={{ borderBottom: '1px solid #f0e6d8' }} className="last:border-0">
+                              <td className="py-3">
+                                <div className="flex items-center gap-2">
+                                  <PaxIcon count={pax} />
+                                  <span className="font-semibold text-[#333]">{pax} PAX</span>
+                                </div>
+                              </td>
+                              <td className="py-3 text-right">
+                                {isEditing ? (
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    value={eRow?.noche ?? ''}
+                                    onChange={(e) => handlePriceChange(periodo.id, pax, 'noche', e.target.value)}
+                                    className="field w-32 text-right"
+                                    placeholder="0"
+                                  />
+                                ) : (
+                                  <span className={`font-semibold ${Number(row.precio_noche) > 0 ? 'text-[#111111]' : 'text-[#ccc]'}`}>
+                                    {money(row.precio_noche)}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-3 text-right">
+                                {isEditing ? (
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    value={eRow?.semana ?? ''}
+                                    onChange={(e) => handlePriceChange(periodo.id, pax, 'semana', e.target.value)}
+                                    className="field w-32 text-right"
+                                    placeholder="0"
+                                  />
+                                ) : (
+                                  <span className={`font-semibold ${Number(row.precio_semana) > 0 ? 'text-[#d2ab84]' : 'text-[#ccc]'}`}>
+                                    {money(row.precio_semana)}
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          )
+        })}
+
+        {periodos.length === 0 && !showNew && (
+          <div className="text-center py-20">
+            <p className="text-[#888] text-lg font-medium">No hay períodos configurados.</p>
+            <p className="text-[#aaa] text-sm mt-2">Hacé clic en "+ Nuevo período" para agregar el primero.</p>
+          </div>
         )}
       </div>
     </div>

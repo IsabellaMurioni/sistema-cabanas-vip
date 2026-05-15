@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+﻿import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { parseISO, getMonth, getYear, format, subMonths } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -6,6 +6,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   PieChart, Pie, Cell, LineChart, Line,
 } from 'recharts'
+import { getCabanaColor } from '../lib/cabanas'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -71,18 +72,18 @@ function DeltaBadge({ current, previous }) {
 
 function SummaryCard({ label, value, sub, prevValue, color = 'gray', large }) {
   const colors = {
-    green:  { bg: 'bg-white', border: 'border-green-200', label: 'text-green-600', val: 'text-green-700' },
-    red:    { bg: 'bg-white', border: 'border-red-200',   label: 'text-red-600',   val: 'text-red-700' },
-    blue:   { bg: 'bg-white', border: 'border-blue-200',  label: 'text-blue-600',  val: 'text-blue-700' },
-    gray:   { bg: 'bg-white', border: 'border-gray-200',  label: 'text-gray-500',  val: 'text-gray-800' },
-    dark:   { bg: 'bg-slate-800', border: 'border-slate-700', label: 'text-slate-300', val: 'text-white' },
+    green:  { bg: 'bg-[#fee7ef] border border-[#f0e6d8]', label: 'text-green-600', val: 'text-green-700' },
+    red:    { bg: 'bg-[#fee7ef] border border-[#f0e6d8]', label: 'text-red-600',   val: 'text-red-700' },
+    blue:   { bg: 'bg-[#fee7ef] border border-[#f0e6d8]', label: 'text-[#d2ab84]', val: 'text-[#c49870]' },
+    gray:   { bg: 'bg-[#fee7ef] border border-[#f0e6d8]', label: 'text-[#888]',    val: 'text-[#111111]' },
+    dark:   { bg: 'bg-[#111111]',                          label: 'text-[#d2ab84]', val: 'text-white' },
   }
   const c = colors[color]
   return (
-    <div className={`${c.bg} ${c.border} border rounded-xl p-5`}>
-      <p className={`text-xs font-medium uppercase tracking-wide mb-1 ${c.label}`}>{label}</p>
+    <div className={`${c.bg} rounded-[16px] p-5`}>
+      <p className={`text-xs font-semibold uppercase tracking-wide mb-1 ${c.label}`}>{label}</p>
       <p className={`font-bold ${c.val} ${large ? 'text-3xl' : 'text-2xl'}`}>{value}</p>
-      {sub && <p className="text-xs text-gray-400 mt-1">{sub}</p>}
+      {sub && <p className="text-xs text-[#888] mt-1">{sub}</p>}
       {prevValue !== undefined && (
         <div className="mt-2">
           <DeltaBadge current={parseFloat(String(value).replace(/[^0-9.-]/g, ''))} previous={prevValue} />
@@ -94,8 +95,8 @@ function SummaryCard({ label, value, sub, prevValue, color = 'gray', large }) {
 
 function Section({ title, children }) {
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-      <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-5">{title}</h3>
+    <div className="card">
+      <h3 className="text-[16px] font-semibold text-[#111111] mb-4">{title}</h3>
       {children}
     </div>
   )
@@ -271,7 +272,7 @@ export default function Ganancias() {
     { id: 'graficos', label: 'Gráficos' },
   ]
 
-  if (loading) return <p className="text-gray-500 text-center py-16">Cargando...</p>
+  if (loading) return <p className="text-[#888] text-center py-16">Cargando...</p>
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
@@ -279,8 +280,8 @@ export default function Ganancias() {
       {/* ── Header ─────────────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-bold text-gray-800">Ganancias</h2>
-          <p className="text-sm text-gray-500">{periodLabel}</p>
+          <h1 className="text-[28px] font-bold text-[#111111]">Ganancias</h1>
+          <p className="text-sm text-[#888]">{periodLabel}</p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -289,7 +290,7 @@ export default function Ganancias() {
             value={mes}
             onChange={e => { setMes(Number(e.target.value)); setAllYear(false) }}
             disabled={allYear}
-            className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 disabled:opacity-40"
+            className="field" style={{ width: 'auto', paddingTop: '6px', paddingBottom: '6px' }}
           >
             {MESES.map((m, i) => <option key={i} value={i}>{m}</option>)}
           </select>
@@ -298,7 +299,7 @@ export default function Ganancias() {
           <select
             value={anio}
             onChange={e => setAnio(Number(e.target.value))}
-            className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
+            className="field" style={{ width: 'auto', paddingTop: '6px', paddingBottom: '6px' }}
           >
             {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
           </select>
@@ -306,7 +307,7 @@ export default function Ganancias() {
           {/* Año completo toggle */}
           <button
             onClick={() => setAllYear(v => !v)}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${allYear ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}
+            className={`px-3 py-1.5 rounded-[10px] text-sm font-medium border transition-all ${allYear ? 'bg-[#111111] text-white border-[#111111]' : 'bg-[#fee7ef] text-[#333] border-[#f0e6d8] hover:border-[#d2ab84]'}`}
           >
             Año completo
           </button>
@@ -317,7 +318,7 @@ export default function Ganancias() {
               fReservas.map(r => ({ codigo: r.codigo, cabana: r.cabana, fecha_entrada: r.fecha_entrada, monto_total: r.monto_total, estado: r.estado })),
               `ganancias_${periodLabel.replace(' ', '_')}.csv`
             )}
-            className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 transition-colors"
+            className="px-3 py-1.5 rounded-[10px] text-sm font-medium border border-[#f0e6d8] bg-[#fee7ef] text-[#333] hover:border-[#d2ab84] transition-all"
           >
             ↓ Exportar CSV
           </button>
@@ -325,7 +326,7 @@ export default function Ganancias() {
           {/* Print PDF */}
           <button
             onClick={() => window.print()}
-            className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 transition-colors"
+            className="px-3 py-1.5 rounded-[10px] text-sm font-medium border border-[#f0e6d8] bg-[#fee7ef] text-[#333] hover:border-[#d2ab84] transition-all"
           >
             🖨 PDF
           </button>
@@ -333,15 +334,15 @@ export default function Ganancias() {
       </div>
 
       {/* ── Tabs ───────────────────────────────────────────────────────── */}
-      <div className="flex gap-0 border-b border-gray-200">
+      <div className="flex gap-0" style={{ borderBottom: '1px solid #f0e6d8' }}>
         {TABS.map(t => (
           <button
             key={t.id}
             onClick={() => setActiveTab(t.id)}
-            className={`px-5 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${
+            className={`px-5 py-2.5 text-sm font-semibold transition-colors border-b-2 -mb-px ${
               activeTab === t.id
-                ? 'border-slate-800 text-slate-800'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
+                ? 'border-[#d2ab84] text-[#111111]'
+                : 'border-transparent text-[#888] hover:text-[#333]'
             }`}
           >
             {t.label}
@@ -376,11 +377,11 @@ export default function Ganancias() {
               large
               prevValue={prevGastos}
             />
-            <div className={`border rounded-xl p-5 ${ganancia >= 0 ? 'bg-white border-green-200' : 'bg-white border-red-200'}`}>
-              <p className={`text-xs font-medium uppercase tracking-wide mb-1 ${ganancia >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+            <div className="rounded-[16px] p-5 bg-[#111111]">
+              <p className="text-xs font-semibold uppercase tracking-widest mb-1 text-[#d2ab84]">
                 Ganancia neta
               </p>
-              <p className={`text-3xl font-bold ${ganancia >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+              <p className={`text-3xl font-bold ${ganancia >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                 {ars(ganancia)}
               </p>
               <div className="mt-2">
@@ -399,25 +400,29 @@ export default function Ganancias() {
             <SummaryCard label="Retiro USD" value={usd(retiroUSD)} />
           </div>
 
-          {/* Quick cabin top 5 */}
+          {/* Quick cabin top */}
           <Section title="Top cabañas del período">
             {porCabana.length === 0 ? (
-              <p className="text-gray-400 text-sm">Sin reservas en este período.</p>
+              <p className="text-[#888] text-sm">Sin reservas en este período.</p>
             ) : (
-              <div className="space-y-2">
+              <div className="space-y-3">
                 {porCabana.slice(0, 8).map(({ cabana, reservas: cnt, monto }) => {
                   const maxMonto = porCabana[0]?.monto || 1
+                  const color = getCabanaColor(cabana)
                   return (
                     <div key={cabana} className="flex items-center gap-3">
-                      <span className="text-sm font-medium text-gray-700 w-32 flex-shrink-0">{cabana}</span>
-                      <div className="flex-1 bg-gray-100 rounded-full h-2 overflow-hidden">
+                      <div className="flex items-center gap-2 w-36 flex-shrink-0">
+                        <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
+                        <span className="text-sm font-medium text-[#333] truncate">{cabana}</span>
+                      </div>
+                      <div className="flex-1 bg-[#f0e6d8] rounded-full h-2 overflow-hidden">
                         <div
-                          className="h-2 rounded-full bg-blue-500"
-                          style={{ width: `${(monto / maxMonto) * 100}%` }}
+                          className="h-2 rounded-full transition-all"
+                          style={{ width: `${(monto / maxMonto) * 100}%`, backgroundColor: color }}
                         />
                       </div>
-                      <span className="text-sm font-semibold text-gray-800 w-28 text-right">{ars(monto)}</span>
-                      <span className="text-xs text-gray-400 w-20 text-right">{cnt} reserva{cnt !== 1 ? 's' : ''}</span>
+                      <span className="text-sm font-semibold text-[#111] w-28 text-right tabular-nums">{ars(monto)}</span>
+                      <span className="text-xs text-[#888] w-20 text-right">{cnt} reserva{cnt !== 1 ? 's' : ''}</span>
                     </div>
                   )
                 })}
@@ -444,7 +449,7 @@ export default function Ganancias() {
             ) : (
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-slate-800 text-white">
+                  <tr className="bg-[#111111] text-white">
                     <th className="text-left px-4 py-2.5 rounded-tl-lg font-medium">Cabaña</th>
                     <th className="text-center px-4 py-2.5 font-medium">Reservas</th>
                     <th className="text-right px-4 py-2.5 font-medium">Monto total</th>
@@ -453,14 +458,14 @@ export default function Ganancias() {
                 </thead>
                 <tbody>
                   {porCabana.map(({ cabana, reservas: cnt, monto }, i) => (
-                    <tr key={cabana} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                      <td className="px-4 py-2.5 font-medium text-gray-800">{cabana}</td>
-                      <td className="px-4 py-2.5 text-center text-gray-600">{cnt}</td>
+                    <tr key={cabana} className={i % 2 === 0 ? 'bg-white' : 'bg-[#fee7ef]'}>
+                      <td className="px-4 py-2.5 font-medium text-[#111]">{cabana}</td>
+                      <td className="px-4 py-2.5 text-center text-[#888]">{cnt}</td>
                       <td className="px-4 py-2.5 text-right font-semibold text-green-700">{ars(monto)}</td>
-                      <td className="px-4 py-2.5 text-right text-gray-500">{pct(monto, reservasIncome)}</td>
+                      <td className="px-4 py-2.5 text-right text-[#888]">{pct(monto, reservasIncome)}</td>
                     </tr>
                   ))}
-                  <tr className="bg-slate-50 border-t-2 border-slate-200 font-semibold">
+                  <tr className="bg-[#fee7ef] border-t-2 border-[#f0e6d8] font-semibold">
                     <td className="px-4 py-2.5">TOTAL</td>
                     <td className="px-4 py-2.5 text-center">{reservasCount}</td>
                     <td className="px-4 py-2.5 text-right text-green-700">{ars(reservasIncome)}</td>
@@ -474,7 +479,7 @@ export default function Ganancias() {
           <Section title="Detalle Caja Silvia — ingresos del período">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-slate-800 text-white">
+                <tr className="bg-[#111111] text-white">
                   <th className="text-left px-3 py-2.5 rounded-tl-lg font-medium">Fecha</th>
                   <th className="text-left px-3 py-2.5 font-medium">Detalle</th>
                   <th className="text-right px-3 py-2.5 font-medium">Ingreso $</th>
@@ -486,9 +491,9 @@ export default function Ganancias() {
                 {fSilvia.filter(r => r.ingreso_pesos > 0 || r.ingreso_juli > 0 || r.ingreso_dolares > 0)
                   .sort((a,b) => a.fecha.localeCompare(b.fecha))
                   .map((r, i) => (
-                    <tr key={r.id} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                      <td className="px-3 py-2 text-gray-600">{r.fecha}</td>
-                      <td className="px-3 py-2 text-gray-700">{r.detalle || '-'}</td>
+                    <tr key={r.id} className={i % 2 === 0 ? 'bg-white' : 'bg-[#fee7ef]'}>
+                      <td className="px-3 py-2 text-[#888]">{r.fecha}</td>
+                      <td className="px-3 py-2 text-[#333]">{r.detalle || '-'}</td>
                       <td className="px-3 py-2 text-right text-green-700 font-medium">{r.ingreso_pesos > 0 ? ars(r.ingreso_pesos) : '-'}</td>
                       <td className="px-3 py-2 text-right text-blue-700 font-medium">{r.ingreso_juli > 0 ? ars(r.ingreso_juli) : '-'}</td>
                       <td className="px-3 py-2 text-right text-indigo-700 font-medium">{r.ingreso_dolares > 0 ? usd(r.ingreso_dolares) : '-'}</td>
@@ -517,7 +522,7 @@ export default function Ganancias() {
             ) : (
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-slate-800 text-white">
+                  <tr className="bg-[#111111] text-white">
                     <th className="text-left px-4 py-2.5 rounded-tl-lg font-medium">Categoría</th>
                     <th className="text-right px-4 py-2.5 font-medium">Monto</th>
                     <th className="text-right px-4 py-2.5 font-medium">% del total</th>
@@ -526,12 +531,12 @@ export default function Ganancias() {
                 </thead>
                 <tbody>
                   {porCategoria.map(({ cat, monto }, i) => (
-                    <tr key={cat} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                    <tr key={cat} className={i % 2 === 0 ? 'bg-white' : 'bg-[#fee7ef]'}>
                       <td className="px-4 py-2.5 text-gray-800 font-medium">{cat}</td>
                       <td className="px-4 py-2.5 text-right text-red-700 font-semibold">{ars(monto)}</td>
-                      <td className="px-4 py-2.5 text-right text-gray-500">{pct(monto, gastoTotal)}</td>
+                      <td className="px-4 py-2.5 text-right text-[#888]">{pct(monto, gastoTotal)}</td>
                       <td className="px-4 py-2.5">
-                        <div className="bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                        <div className="bg-[#f0e6d8] rounded-full h-1.5 overflow-hidden">
                           <div
                             className="h-1.5 rounded-full bg-red-400"
                             style={{ width: `${(monto / (porCategoria[0]?.monto || 1)) * 100}%` }}
@@ -540,7 +545,7 @@ export default function Ganancias() {
                       </td>
                     </tr>
                   ))}
-                  <tr className="bg-slate-50 border-t-2 border-slate-200 font-semibold">
+                  <tr className="bg-[#fee7ef] border-t-2 border-[#f0e6d8] font-semibold">
                     <td className="px-4 py-2.5">TOTAL GASTOS</td>
                     <td className="px-4 py-2.5 text-right text-red-700">{ars(gastoTotal)}</td>
                     <td className="px-4 py-2.5 text-right">100%</td>
@@ -558,7 +563,7 @@ export default function Ganancias() {
             ) : (
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-slate-800 text-white">
+                  <tr className="bg-[#111111] text-white">
                     <th className="text-left px-3 py-2.5 rounded-tl-lg font-medium">Fecha</th>
                     <th className="text-left px-3 py-2.5 font-medium">Detalle</th>
                     <th className="text-left px-3 py-2.5 font-medium">Modalidad</th>
@@ -569,16 +574,16 @@ export default function Ganancias() {
                 </thead>
                 <tbody>
                   {fJuliGastos.sort((a,b) => a.fecha.localeCompare(b.fecha)).map((r, i) => (
-                    <tr key={r.id} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                      <td className="px-3 py-2 text-gray-600">{r.fecha}</td>
-                      <td className="px-3 py-2 text-gray-700">{r.detalle || '-'}</td>
-                      <td className="px-3 py-2 text-gray-600">{r.modalidad_pago || '-'}</td>
+                    <tr key={r.id} className={i % 2 === 0 ? 'bg-white' : 'bg-[#fee7ef]'}>
+                      <td className="px-3 py-2 text-[#888]">{r.fecha}</td>
+                      <td className="px-3 py-2 text-[#333]">{r.detalle || '-'}</td>
+                      <td className="px-3 py-2 text-[#888]">{r.modalidad_pago || '-'}</td>
                       <td className="px-3 py-2 text-right text-red-700">{ars(r.importe)}</td>
                       <td className="px-3 py-2 text-right text-green-700">{r.devolucion > 0 ? ars(r.devolucion) : '-'}</td>
                       <td className="px-3 py-2 text-right font-semibold text-red-800">{ars((r.importe||0) - (r.devolucion||0))}</td>
                     </tr>
                   ))}
-                  <tr className="bg-slate-50 border-t-2 border-slate-200 font-semibold">
+                  <tr className="bg-[#fee7ef] border-t-2 border-[#f0e6d8] font-semibold">
                     <td colSpan={5} className="px-3 py-2.5">TOTAL neto Juli gastos</td>
                     <td className="px-3 py-2.5 text-right text-red-700">{ars(juliGastos)}</td>
                   </tr>
@@ -606,7 +611,7 @@ export default function Ganancias() {
             ) : (
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-slate-800 text-white">
+                  <tr className="bg-[#111111] text-white">
                     <th className="text-left px-4 py-2.5 rounded-tl-lg font-medium">Fecha</th>
                     <th className="text-left px-4 py-2.5 font-medium">Cuenta</th>
                     <th className="text-left px-4 py-2.5 font-medium">Detalle</th>
@@ -616,17 +621,17 @@ export default function Ganancias() {
                 </thead>
                 <tbody>
                   {retiros.map((r, i) => (
-                    <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                      <td className="px-4 py-2.5 text-gray-600">{r.fecha}</td>
-                      <td className="px-4 py-2.5 text-gray-700">{r.cuenta}</td>
-                      <td className="px-4 py-2.5 text-gray-700">{r.detalle}</td>
-                      <td className="px-4 py-2.5 text-right font-semibold text-gray-800">{r.retiro_pesos > 0 ? ars(r.retiro_pesos) : '-'}</td>
+                    <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-[#fee7ef]'}>
+                      <td className="px-4 py-2.5 text-[#888]">{r.fecha}</td>
+                      <td className="px-4 py-2.5 text-[#333]">{r.cuenta}</td>
+                      <td className="px-4 py-2.5 text-[#333]">{r.detalle}</td>
+                      <td className="px-4 py-2.5 text-right font-semibold text-[#111]">{r.retiro_pesos > 0 ? ars(r.retiro_pesos) : '-'}</td>
                       <td className="px-4 py-2.5 text-right font-semibold text-indigo-700">{r.retiro_dolares > 0 ? usd(r.retiro_dolares) : '-'}</td>
                     </tr>
                   ))}
-                  <tr className="bg-slate-50 border-t-2 border-slate-200 font-semibold">
+                  <tr className="bg-[#fee7ef] border-t-2 border-[#f0e6d8] font-semibold">
                     <td colSpan={3} className="px-4 py-2.5">TOTAL</td>
-                    <td className="px-4 py-2.5 text-right text-gray-800">{ars(totalRetiroPesos)}</td>
+                    <td className="px-4 py-2.5 text-right text-[#111]">{ars(totalRetiroPesos)}</td>
                     <td className="px-4 py-2.5 text-right text-indigo-700">{usd(totalRetiroUSD)}</td>
                   </tr>
                 </tbody>
@@ -720,10 +725,10 @@ export default function Ganancias() {
                         className="w-3 h-3 rounded-full flex-shrink-0"
                         style={{ backgroundColor: PIE_COLORS[idx % PIE_COLORS.length] }}
                       />
-                      <span className="text-gray-700">{name}</span>
+                      <span className="text-[#333]">{name}</span>
                     </div>
                     <div className="flex items-center gap-3">
-                      <span className="text-gray-500 text-xs">{pct(value, gastoTotal)}</span>
+                      <span className="text-[#888] text-xs">{pct(value, gastoTotal)}</span>
                       <span className="font-semibold text-red-700 w-28 text-right">{ars(value)}</span>
                     </div>
                   </div>

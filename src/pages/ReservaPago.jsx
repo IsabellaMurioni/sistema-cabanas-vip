@@ -1,70 +1,30 @@
-import { useEffect, useState } from 'react'
+﻿import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import FileUpload from '../components/FileUpload'
-const ic = 'w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-gray-50 disabled:text-gray-500'
+import { sendEmailRecibo } from '../lib/email'
+
+const TIPOS_PAGO = [
+  'Transferencia bancaria',
+  'Mercado Pago',
+  'Efectivo en cabaña',
+  'Efectivo en oficina',
+]
+
+function getCajaTable(tipo) {
+  if (tipo === 'Mercado Pago')          return 'caja_mercado_pago'
+  if (tipo === 'Efectivo en cabaña' ||
+      tipo === 'Efectivo en oficina')   return 'caja_silvia'
+  return 'caja_banco'
+}
+
+const ic = 'field'
 
 function Field({ label, children }) {
   return (
     <div>
-      <label className="block text-xs font-medium text-gray-600 mb-1">{label}</label>
+      <label className="block section-label mb-1.5">{label}</label>
       {children}
-    </div>
-  )
-}
-
-function PagoSection({ titulo, fields, set }) {
-  return (
-    <div className="bg-white rounded-xl shadow p-6">
-      <div className="flex items-center justify-between mb-4">
-        <p className="text-sm font-semibold text-gray-700">{titulo}</p>
-        <button
-          type="button"
-          disabled
-          title="Próximamente disponible"
-          className="text-xs text-gray-400 border border-gray-200 rounded-lg px-3 py-1.5 cursor-not-allowed opacity-60 flex items-center gap-1.5"
-        >
-          <span>✉</span> Enviar recibo por email
-        </button>
-      </div>
-      <div className="grid grid-cols-2 gap-4">
-        <Field label="Monto ($)">
-          <input
-            type="number"
-            min={0}
-            value={fields.monto}
-            onChange={e => set('monto', e.target.value)}
-            className={ic}
-            placeholder="0"
-          />
-        </Field>
-        {fields.tipo !== undefined && (
-          <Field label="Tipo de pago">
-            <select value={fields.tipo} onChange={e => set('tipo', e.target.value)} className={ic}>
-              <option>Banco</option>
-              <option>Mercado Pago</option>
-            </select>
-          </Field>
-        )}
-        <div className={fields.tipo !== undefined ? '' : 'col-span-2'}>
-          <Field label="Fecha">
-            <input
-              type="date"
-              value={fields.fecha}
-              onChange={e => set('fecha', e.target.value)}
-              className={ic}
-            />
-          </Field>
-        </div>
-        {fields.tipo !== undefined && <div />}
-        <div className="col-span-2">
-          <FileUpload
-            label="Comprobante (foto o PDF)"
-            path={fields.comprobante}
-            onUpload={p => set('comprobante', p)}
-          />
-        </div>
-      </div>
     </div>
   )
 }
@@ -78,134 +38,250 @@ export default function ReservaPago() {
   const [saving,  setSaving]  = useState(false)
   const [error,   setError]   = useState('')
 
-  const [sena1, setSena1] = useState({ monto: '', tipo: 'Banco', fecha: '', comprobante: '' })
-  const [sena2, setSena2] = useState({ monto: '', tipo: 'Banco', fecha: '', comprobante: '' })
-  const [cabana, setCabana] = useState({ monto: '', fecha: '', comprobante: '' })
+  const [form, setForm] = useState({
+    monto:          '',
+    tipo:           'Transferencia bancaria',
+    fecha:          new Date().toISOString().slice(0, 10),
+    comprobante:    '',
+    observaciones:  '',
+  })
 
   useEffect(() => {
     supabase.from('reservas').select('*').eq('id', id).single().then(({ data }) => {
-      if (data) {
-        setReserva(data)
-        setSena1({
-          monto:        data.sena1_monto?.toString()        ?? '',
-          tipo:         data.sena1_tipo                     ?? 'Banco',
-          fecha:        data.sena1_fecha                    ?? '',
-          comprobante:  data.sena1_comprobante              ?? '',
-        })
-        setSena2({
-          monto:        data.sena2_monto?.toString()        ?? '',
-          tipo:         data.sena2_tipo                     ?? 'Banco',
-          fecha:        data.sena2_fecha                    ?? '',
-          comprobante:  data.sena2_comprobante              ?? '',
-        })
-        setCabana({
-          monto:        data.pago_cabana_monto?.toString()  ?? '',
-          fecha:        data.pago_cabana_fecha              ?? '',
-          comprobante:  data.pago_cabana_comprobante        ?? '',
-        })
-      }
+      if (data) setReserva(data)
       setLoading(false)
     })
   }, [id])
 
-  const setter = (setState) => (field, value) => setState(s => ({ ...s, [field]: value }))
+  const set = (field, value) => setForm(f => ({ ...f, [field]: value }))
 
-  const pagado = Number(sena1.monto || 0) + Number(sena2.monto || 0) + Number(cabana.monto || 0)
-  const saldo  = Number(reserva?.monto_total || 0) - pagado
-
-  const handleSubmit = async e => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
+    if (!form.monto || Number(form.monto) <= 0) {
+      setError('Ingresá un monto válido.')
+      return
+    }
+
     setSaving(true)
     setError('')
 
-    const { error: err } = await supabase.from('reservas').update({
-      sena1_monto:              sena1.monto !== '' ? Number(sena1.monto) : null,
-      sena1_tipo:               sena1.tipo  || null,
-      sena1_fecha:              sena1.fecha || null,
-      sena1_comprobante:        sena1.comprobante || null,
-      sena2_monto:              sena2.monto !== '' ? Number(sena2.monto) : null,
-      sena2_tipo:               sena2.tipo  || null,
-      sena2_fecha:              sena2.fecha || null,
-      sena2_comprobante:        sena2.comprobante || null,
-      pago_cabana_monto:        cabana.monto !== '' ? Number(cabana.monto) : null,
-      pago_cabana_fecha:        cabana.fecha || null,
-      pago_cabana_comprobante:  cabana.comprobante || null,
+    // Determinar slot: sena1 o sena2
+    const tieneSena1 = Number(reserva.sena1_monto || 0) > 0
+    const tieneSena2 = Number(reserva.sena2_monto || 0) > 0
+
+    let campo, titulo
+    if (!tieneSena1) {
+      campo = 'sena1'
+      titulo = '1ª Seña'
+    } else if (!tieneSena2) {
+      campo = 'sena2'
+      titulo = '2ª Seña'
+    } else {
+      setError('Esta reserva ya tiene 2 señas registradas. Editá la reserva directamente para agregar más pagos.')
+      setSaving(false)
+      return
+    }
+
+    // Estado: primer pago → Pendiente se convierte en Confirmada
+    const esPrimerPago = !tieneSena1
+    const nuevoEstado  = esPrimerPago && reserva.estado === 'Pendiente'
+      ? 'Confirmada'
+      : reserva.estado
+
+    // Guardar en reserva
+    const { error: errReserva } = await supabase.from('reservas').update({
+      [`${campo}_monto`]:       Number(form.monto),
+      [`${campo}_tipo`]:        form.tipo,
+      [`${campo}_fecha`]:       form.fecha || null,
+      [`${campo}_recibo`]:      form.observaciones || null,
+      [`${campo}_comprobante`]: form.comprobante || null,
+      estado: nuevoEstado,
     }).eq('id', id)
 
+    if (errReserva) {
+      setError('Error al guardar: ' + errReserva.message)
+      setSaving(false)
+      return
+    }
+
+    // Registrar en caja
+    const tabla = getCajaTable(form.tipo)
+    const hoy   = new Date().toISOString().slice(0, 10)
+    const detalle = `${titulo} · ${reserva.codigo} - ${reserva.nombre_apellido}`
+
+    if (tabla === 'caja_silvia') {
+      await supabase.from('caja_silvia').insert({
+        fecha:           form.fecha || hoy,
+        cuenta:          'Alquiler',
+        detalle,
+        ingreso_pesos:   Number(form.monto),
+        ingreso_dolares: 0,
+        ingreso_juli:    0,
+        gasto:           0,
+        retiro_pesos:    0,
+        retiro_dolares:  0,
+      })
+    } else {
+      await supabase.from(tabla).insert({
+        fecha:          form.fecha || hoy,
+        detalle,
+        reserva_codigo: reserva.codigo,
+        reserva_nombre: reserva.nombre_apellido,
+        ingreso:        Number(form.monto),
+        egreso:         0,
+      })
+    }
+
     setSaving(false)
-    if (err) setError('Error al guardar: ' + err.message)
-    else navigate(`/reservas/${id}`)
+
+    if (nuevoEstado === 'Confirmada' && reserva.email) {
+      const total_pagado = Number(form.monto)
+      sendEmailRecibo(reserva, {
+        titulo,
+        monto: Number(form.monto),
+        fecha: form.fecha,
+        tipo: form.tipo,
+        total_pagado,
+        saldo: Number(reserva.monto_total || 0) - total_pagado,
+      }).catch((e) => console.error('[ReservaPago] Email recibo ERROR:', e))
+    }
+
+    navigate(`/reservas/${id}`, nuevoEstado === 'Confirmada'
+      ? { state: { toast: 'Reserva confirmada automáticamente' } }
+      : {})
   }
 
   if (loading) return <p className="text-gray-500 text-center py-16">Cargando...</p>
   if (!reserva) return <p className="text-red-500 text-center py-16">Reserva no encontrada</p>
 
+  const tieneSena1  = Number(reserva.sena1_monto  || 0) > 0
+  const tieneSena2  = Number(reserva.sena2_monto  || 0) > 0
+  const slotSiguiente = !tieneSena1 ? '1ª Seña' : !tieneSena2 ? '2ª Seña' : null
+  const pagado = Number(reserva.sena1_monto || 0) + Number(reserva.sena2_monto || 0) + Number(reserva.pago_cabana_monto || 0)
+  const saldo  = Number(reserva.monto_total || 0) - pagado
+
   return (
-    <div className="max-w-2xl mx-auto">
+    <div className="max-w-lg mx-auto">
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
-        <button
-          onClick={() => navigate(`/reservas/${id}`)}
-          className="text-gray-500 hover:text-gray-700 text-sm"
-        >
+        <button onClick={() => navigate(`/reservas/${id}`)} className="text-[#888] hover:text-[#333] text-sm transition-colors">
           ← Volver
         </button>
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="text-xl font-bold text-gray-800 font-mono">{reserva.codigo}</h2>
-            <span className="text-gray-400 text-sm">·</span>
-            <h2 className="text-sm font-medium text-gray-600">Editar pagos</h2>
+            <h1 className="text-[28px] font-bold font-mono text-[#111111]">{reserva.codigo}</h1>
+            <span className="text-[#aaa] text-sm">·</span>
+            <span className="text-sm font-medium text-[#888]">Nuevo pago</span>
           </div>
-          <p className="text-sm text-gray-500">{reserva.nombre_apellido} · {reserva.cabana}</p>
+          <p className="text-sm text-[#888]">{reserva.nombre_apellido} · {reserva.cabana}</p>
         </div>
       </div>
 
       {/* Resumen económico */}
-      <div className="bg-white rounded-xl shadow p-4 mb-6 grid grid-cols-3 divide-x divide-gray-100">
-        <div className="px-4 text-center">
-          <p className="text-xs text-gray-400 mb-0.5">Total</p>
-          <p className="font-bold text-gray-800">${Number(reserva.monto_total || 0).toLocaleString('es-AR')}</p>
+      <div className="card grid grid-cols-3 divide-x divide-[#f0e6d8] mb-6 p-0 overflow-hidden">
+        <div className="p-5 text-center">
+          <p className="section-label mb-1">Total</p>
+          <p className="font-bold text-[#111111]">${Number(reserva.monto_total || 0).toLocaleString('es-AR')}</p>
         </div>
-        <div className="px-4 text-center">
-          <p className="text-xs text-gray-400 mb-0.5">Pagado</p>
+        <div className="p-5 text-center">
+          <p className="section-label mb-1">Pagado</p>
           <p className="font-bold text-green-700">${pagado.toLocaleString('es-AR')}</p>
         </div>
-        <div className="px-4 text-center">
-          <p className="text-xs text-gray-400 mb-0.5">Saldo</p>
+        <div className="p-5 text-center">
+          <p className="section-label mb-1">Saldo</p>
           <p className={`font-bold text-lg ${saldo > 0 ? 'text-orange-600' : 'text-green-600'}`}>
             ${saldo.toLocaleString('es-AR')}
           </p>
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-5">
-        <PagoSection titulo="1ª Seña"      fields={sena1}  set={setter(setSena1)} />
-        <PagoSection titulo="2ª Seña"      fields={sena2}  set={setter(setSena2)} />
-        <PagoSection titulo="Pago en cabaña" fields={cabana} set={setter(setCabana)} />
-
-        {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm">
-            {error}
-          </div>
-        )}
-
-        <div className="flex gap-3 pb-6">
-          <button
-            type="button"
-            onClick={() => navigate(`/reservas/${id}`)}
-            className="flex-1 border border-gray-300 rounded-lg py-2.5 text-sm font-medium hover:bg-gray-50 transition-colors"
-          >
-            Cancelar
-          </button>
-          <button
-            type="submit"
-            disabled={saving}
-            className="flex-1 bg-primary-600 hover:bg-primary-700 disabled:opacity-50 text-white rounded-lg py-2.5 text-sm font-medium transition-colors"
-          >
-            {saving ? 'Guardando...' : 'Guardar pagos'}
-          </button>
+      {slotSiguiente === null ? (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-5 text-sm text-yellow-800">
+          Esta reserva ya tiene 2 señas registradas. Para agregar más pagos, editá la reserva directamente.
         </div>
-      </form>
+      ) : (
+        <form onSubmit={handleSubmit} className="card space-y-5">
+          <div className="flex items-center gap-2 mb-1">
+            <h3 className="text-[18px] font-semibold text-[#111111]">
+              Registrar pago
+            </h3>
+            <span className="badge" style={{ background: '#fee7ef', color: '#d2ab84' }}>
+              Se asignará como {slotSiguiente}
+            </span>
+          </div>
+
+          <Field label="Monto ($)">
+            <input
+              type="number"
+              min={0}
+              value={form.monto}
+              onChange={e => set('monto', e.target.value)}
+              className={ic}
+              placeholder="0"
+              required
+              autoFocus
+            />
+          </Field>
+
+          <Field label="Tipo de pago">
+            <select
+              value={form.tipo}
+              onChange={e => set('tipo', e.target.value)}
+              className={ic}
+            >
+              {TIPOS_PAGO.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </Field>
+
+          <Field label="Fecha del pago">
+            <input
+              type="date"
+              value={form.fecha}
+              onChange={e => set('fecha', e.target.value)}
+              className={ic}
+            />
+          </Field>
+
+          <FileUpload
+            label="Comprobante (foto o PDF)"
+            path={form.comprobante}
+            onUpload={path => set('comprobante', path)}
+          />
+
+          <Field label="Observaciones">
+            <textarea
+              value={form.observaciones}
+              onChange={e => set('observaciones', e.target.value)}
+              rows={3}
+              className={`${ic} resize-none`}
+              placeholder="Notas sobre este pago (opcional)"
+            />
+          </Field>
+
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm">
+              {error}
+            </div>
+          )}
+
+          <div className="flex gap-3 pt-1">
+            <button
+              type="button"
+              onClick={() => navigate(`/reservas/${id}`)}
+              className="btn-secondary flex-1 py-2.5"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="btn-primary flex-1 py-2.5 disabled:opacity-50"
+            >
+              {saving ? 'Guardando...' : 'Registrar pago'}
+            </button>
+          </div>
+        </form>
+      )}
     </div>
   )
 }
