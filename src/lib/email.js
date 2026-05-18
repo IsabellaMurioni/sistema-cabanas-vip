@@ -6,9 +6,20 @@ import {
 
 const SVC      = import.meta.env.VITE_EMAILJS_SERVICE_ID
 const PUB      = import.meta.env.VITE_EMAILJS_PUBLIC_KEY
+const PRIV     = import.meta.env.VITE_EMAILJS_PRIVATE_KEY
 const TEMPLATE = import.meta.env.VITE_EMAILJS_TEMPLATE_ID
 
-emailjs.init({ publicKey: PUB })
+if (!SVC || !PUB || !PRIV || !TEMPLATE) {
+  console.error(
+    '[EmailJS] ⚠️ Variables de entorno faltantes. Los emails NO se enviarán.\n' +
+    '  VITE_EMAILJS_SERVICE_ID:', !!SVC, '\n' +
+    '  VITE_EMAILJS_PUBLIC_KEY:', !!PUB, '\n' +
+    '  VITE_EMAILJS_PRIVATE_KEY:', !!PRIV, '\n' +
+    '  VITE_EMAILJS_TEMPLATE_ID:', !!TEMPLATE
+  )
+}
+
+emailjs.init({ publicKey: PUB, privateKey: PRIV })
 
 function str(v, fallback = '') {
   if (v === null || v === undefined) return fallback
@@ -16,6 +27,9 @@ function str(v, fallback = '') {
 }
 
 async function enviarEmail(to, asunto, contenido) {
+  if (!SVC || !PUB || !PRIV || !TEMPLATE) {
+    throw new Error('EmailJS no está configurado. Verificá las variables de entorno en Vercel.')
+  }
   console.log('[EmailJS] Enviando a:', to, '| asunto:', asunto)
   try {
     const result = await emailjs.send(SVC, TEMPLATE, { email_destino: to, asunto, contenido }, PUB)

@@ -132,7 +132,7 @@ function CalendarPicker({ value, onChange, label }) {
 function DayHeaders({ startDate, numDays }) {
   const today = startOfToday()
   return (
-    <div className="flex border-b border-[#f0e6d8] bg-[#fee7ef] sticky top-0 z-10">
+    <div style={{ display: 'flex', width: numDays * DAY_W, minWidth: numDays * DAY_W, flexShrink: 0, borderBottom: '1px solid #f0e6d8', backgroundColor: '#fee7ef' }}>
       {Array.from({ length: numDays }, (_, i) => {
         const day = addDays(startDate, i)
         const dow = getDay(day)
@@ -141,17 +141,18 @@ function DayHeaders({ startDate, numDays }) {
         return (
           <div
             key={i}
-            style={{ width: DAY_W, minWidth: DAY_W, flexShrink: 0 }}
-            className={`
-              text-center py-2 border-r border-[#f0e6d8] select-none
-              ${isWeekend ? 'bg-[#fff4e8]' : ''}
-              ${isToday ? 'bg-orange-50' : ''}
-            `}
+            style={{
+              width: DAY_W, minWidth: DAY_W, flexShrink: 0,
+              textAlign: 'center', padding: '6px 0',
+              borderRight: '1px solid #f0e6d8',
+              backgroundColor: isToday ? '#fff7ed' : isWeekend ? '#fff4e8' : 'transparent',
+              userSelect: 'none',
+            }}
           >
-            <div className={`text-xs font-bold leading-tight ${isToday ? 'text-orange-600' : 'text-[#333]'}`}>
+            <div style={{ fontSize: 12, fontWeight: 700, lineHeight: 1.2, color: isToday ? '#ea580c' : '#333' }}>
               {format(day, 'd')}
             </div>
-            <div className={`leading-tight capitalize ${isToday ? 'text-orange-400' : 'text-[#888]'}`} style={{ fontSize: 9 }}>
+            <div style={{ fontSize: 9, lineHeight: 1.2, textTransform: 'capitalize', color: isToday ? '#fb923c' : '#888' }}>
               {format(day, 'EEE', { locale: es }).slice(0, 2)}
             </div>
           </div>
@@ -176,10 +177,12 @@ function TimelineRow({ cabana, reservas, startDate, endDate, height = 40, onRese
     return sal >= startDate && ent <= endDate
   })
 
+  const totalW = numDays * DAY_W
+
   return (
-    <div className="relative" style={{ height }}>
+    <div style={{ position: 'relative', height, width: totalW, minWidth: totalW, flexShrink: 0 }}>
       {/* Background cells */}
-      <div className="absolute inset-0 flex">
+      <div style={{ position: 'absolute', top: 0, left: 0, width: totalW, height: '100%', display: 'flex' }}>
         {Array.from({ length: numDays }, (_, i) => {
           const day = addDays(startDate, i)
           const dow = getDay(day)
@@ -188,8 +191,11 @@ function TimelineRow({ cabana, reservas, startDate, endDate, height = 40, onRese
           return (
             <div
               key={i}
-              style={{ width: DAY_W, minWidth: DAY_W, flexShrink: 0 }}
-              className={`h-full border-r border-[#f0e6d8] ${isWeekend ? 'bg-[#fff4e8]' : 'bg-white'} ${isToday ? 'bg-orange-50' : ''}`}
+              style={{
+                width: DAY_W, minWidth: DAY_W, flexShrink: 0, height: '100%',
+                borderRight: '1px solid #f0e6d8',
+                backgroundColor: isToday ? '#fff7ed' : isWeekend ? '#fff4e8' : '#fff',
+              }}
             />
           )
         })}
@@ -485,49 +491,72 @@ export default function Disponibilidad() {
         </div>
       ) : showAll ? (
         /* ── Vista todas las cabañas ── */
-        <div className="bg-white rounded-[16px] border border-[#f0e6d8] overflow-hidden">
-          <div className="overflow-x-auto">
-            {/* Leyenda */}
-            <div className="flex items-center gap-5 px-4 py-3 border-b border-[#f0e6d8] text-xs text-[#888]">
-              <span className="flex items-center gap-1.5">
-                <span className="w-3 h-3 rounded bg-white border-2 border-green-400 inline-block" />
-                Libre
-              </span>
-              <span className="flex items-center gap-1.5">
-                <span className="w-3 h-3 rounded inline-block" style={{ background: 'linear-gradient(135deg, #1e3a5f, #db2777, #0ea5e9)' }} />
-                Ocupado (color por cabaña)
-              </span>
-              <span className="flex items-center gap-1.5">
-                <span className="w-0.5 h-3 inline-block rounded" style={{ backgroundColor: '#f97316' }} />
-                Hoy
-              </span>
-            </div>
+        <div className="bg-white rounded-[16px] border border-[#f0e6d8] overflow-hidden flex flex-col">
+          {/* Leyenda */}
+          <div className="flex items-center gap-5 px-4 py-3 border-b border-[#f0e6d8] text-xs text-[#888] flex-shrink-0">
+            <span className="flex items-center gap-1.5">
+              <span className="w-3 h-3 rounded bg-white border-2 border-green-400 inline-block" />
+              Libre
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-3 h-3 rounded inline-block" style={{ background: 'linear-gradient(135deg, #1e3a5f, #db2777, #0ea5e9)' }} />
+              Ocupado (color por cabaña)
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-0.5 h-3 inline-block rounded" style={{ backgroundColor: '#f97316' }} />
+              Hoy
+            </span>
+          </div>
 
-            {/* Headers */}
-            <div className="flex" style={{ paddingLeft: 136 }}>
-              <DayHeaders startDate={startDate} numDays={numDays} />
-            </div>
-
-            {/* Rows */}
-            {CABANAS.map((cabana, ci) => {
-              const st = cabanaStatus[cabana]
-              return (
-                <div
-                  key={cabana}
-                  className={`flex items-stretch border-b border-[#f0e6d8] last:border-0 ${ci % 2 === 0 ? 'bg-white' : 'bg-[#fee7ef]/30'}`}
-                >
+          {/* Two-column grid: fixed labels + scrollable timeline */}
+          <div style={{ display: 'flex', overflow: 'hidden' }}>
+            {/* Left: cabin names (fixed, no scroll) */}
+            <div style={{ width: 136, minWidth: 136, flexShrink: 0, borderRight: '1px solid #f0e6d8' }}>
+              {/* Header spacer — matches DayHeaders height (44px) */}
+              <div style={{ height: 44, borderBottom: '1px solid #f0e6d8', backgroundColor: '#fee7ef' }} />
+              {/* Cabin rows */}
+              {CABANAS.map((cabana, ci) => {
+                const st = cabanaStatus[cabana]
+                return (
                   <div
-                    className="flex items-center px-3 gap-2 border-r border-[#f0e6d8] flex-shrink-0 cursor-pointer hover:bg-[#fee7ef] transition-colors"
-                    style={{ width: 136, borderLeft: `3px solid ${getCabanaColor(cabana)}` }}
+                    key={cabana}
                     onClick={() => { setSelectedCabana(cabana); setShowAll(false) }}
+                    style={{
+                      height: 36, display: 'flex', alignItems: 'center',
+                      gap: 8, paddingLeft: 10, paddingRight: 8,
+                      borderBottom: '1px solid #f0e6d8',
+                      borderLeft: `3px solid ${getCabanaColor(cabana)}`,
+                      backgroundColor: ci % 2 === 0 ? '#fff' : 'rgba(254,231,239,0.35)',
+                      cursor: 'pointer', transition: 'background 0.15s',
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.backgroundColor = '#fee7ef'}
+                    onMouseLeave={e => e.currentTarget.style.backgroundColor = ci % 2 === 0 ? '#fff' : 'rgba(254,231,239,0.35)'}
                   >
-                    <span
-                      className={`w-2 h-2 rounded-full flex-shrink-0 ${st?.occupied ? '' : 'bg-green-400'}`}
-                      style={st?.occupied ? { backgroundColor: getCabanaColor(cabana) } : {}}
-                    />
-                    <span className="text-xs font-semibold text-[#333] truncate">{cabana}</span>
+                    <span style={{
+                      width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
+                      backgroundColor: st?.occupied ? getCabanaColor(cabana) : '#4ade80',
+                    }} />
+                    <span style={{ fontSize: 12, fontWeight: 600, color: '#333', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {cabana}
+                    </span>
                   </div>
-                  <div className="overflow-hidden" style={{ width: numDays * DAY_W }}>
+                )
+              })}
+            </div>
+
+            {/* Right: scrollable timeline */}
+            <div style={{ flex: 1, overflowX: 'auto', overflowY: 'hidden' }}>
+              <div style={{ width: numDays * DAY_W, minWidth: numDays * DAY_W }}>
+                <DayHeaders startDate={startDate} numDays={numDays} />
+                {CABANAS.map((cabana, ci) => (
+                  <div
+                    key={cabana}
+                    style={{
+                      height: 36, borderBottom: '1px solid #f0e6d8',
+                      backgroundColor: ci % 2 === 0 ? '#fff' : 'rgba(254,231,239,0.35)',
+                      overflow: 'visible',
+                    }}
+                  >
                     <TimelineRow
                       cabana={cabana}
                       reservas={reservas}
@@ -537,9 +566,9 @@ export default function Disponibilidad() {
                       onReservaClick={setPopup}
                     />
                   </div>
-                </div>
-              )
-            })}
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       ) : (
@@ -708,8 +737,8 @@ export default function Disponibilidad() {
                 </div>
 
                 {/* Timeline scrollable */}
-                <div className="overflow-x-auto flex-1">
-                  <div style={{ minWidth: numDays * DAY_W + 1 }}>
+                <div style={{ overflowX: 'auto', flex: 1 }}>
+                  <div style={{ width: numDays * DAY_W, minWidth: numDays * DAY_W }}>
                     <DayHeaders startDate={startDate} numDays={numDays} />
                     <TimelineRow
                       cabana={selectedCabana}
