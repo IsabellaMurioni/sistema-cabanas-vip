@@ -70,6 +70,13 @@
   }
 
   /* ── Buttons ─────────────────────────────────────────────── */
+  button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+  }
+
   .btn-primary {
     background: #d2ab84;
     color: #ffffff;

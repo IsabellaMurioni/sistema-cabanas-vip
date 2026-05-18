@@ -126,6 +126,7 @@ export default function Ganancias() {
   const [anio, setAnio]               = useState(currentYear)
   const [allYear, setAllYear]         = useState(false)
   const [activeTab, setActiveTab]     = useState('resumen')
+  const [expandedRows, setExpandedRows] = useState(new Set())
 
   useEffect(() => {
     Promise.all([
@@ -473,6 +474,78 @@ export default function Ganancias() {
                   </tr>
                 </tbody>
               </table>
+            )}
+          </Section>
+
+          <Section title="Detalle de reservas del período">
+            {fReservas.length === 0 ? (
+              <p className="text-[#888] text-sm">Sin reservas en este período.</p>
+            ) : (
+              <div className="overflow-x-auto rounded-[12px] border border-[#f0e6d8] overflow-hidden">
+                <table className="w-full text-sm" style={{ minWidth: 640 }}>
+                  <thead>
+                    <tr className="bg-[#111111] text-white">
+                      <th className="w-8 px-3 py-2.5"></th>
+                      <th className="text-left px-3 py-2.5 font-medium">Reserva</th>
+                      <th className="text-left px-3 py-2.5 font-medium">Cabaña</th>
+                      <th className="text-right px-3 py-2.5 font-medium">Monto total</th>
+                      <th className="text-right px-3 py-2.5 font-medium">Cobrado</th>
+                      <th className="text-right px-3 py-2.5 font-medium">A cobrar</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {fReservas.flatMap((r, i) => {
+                      const cobrado = (r.sena1_monto || 0) + (r.sena2_monto || 0) + (r.pago_cabana_monto || 0)
+                      const aCobrar = (r.monto_total || 0) - cobrado
+                      const isExp = expandedRows.has(r.id)
+                      const toggle = () => setExpandedRows(prev => {
+                        const next = new Set(prev)
+                        if (next.has(r.id)) next.delete(r.id); else next.add(r.id)
+                        return next
+                      })
+                      const payments = [
+                        r.sena1_monto      ? { label: '1ª Seña',         tipo: r.sena1_tipo || 'Banco',    fecha: r.sena1_fecha,       monto: r.sena1_monto      } : null,
+                        r.sena2_monto      ? { label: '2ª Seña',         tipo: r.sena2_tipo || 'Banco',    fecha: r.sena2_fecha,       monto: r.sena2_monto      } : null,
+                        r.pago_cabana_monto? { label: 'Pago en cabaña',  tipo: 'Efectivo',                  fecha: r.pago_cabana_fecha, monto: r.pago_cabana_monto} : null,
+                      ].filter(Boolean)
+                      const tipoCls = (t) => t === 'Banco' ? 'bg-green-50 text-green-700' : t === 'Mercado Pago' ? 'bg-blue-50 text-blue-700' : 'bg-orange-50 text-orange-700'
+                      const bg = i % 2 === 0 ? 'bg-white' : 'bg-[#fee7ef]'
+                      return [
+                        <tr key={r.id} className={`border-b border-[#f0e6d8] ${bg} hover:bg-[#fff4e8] cursor-pointer select-none`} onClick={toggle}>
+                          <td className="px-3 py-2.5 text-center text-[#aaa] text-xs">{isExp ? '▲' : '▼'}</td>
+                          <td className="px-3 py-2.5">
+                            <span className="font-mono text-xs text-[#888] mr-1.5">{r.codigo}</span>
+                            <span className="text-[#333]">{r.nombre_apellido}</span>
+                          </td>
+                          <td className="px-3 py-2.5 text-[#888]">{r.cabana}</td>
+                          <td className="px-3 py-2.5 text-right font-semibold text-[#111]">{ars(r.monto_total)}</td>
+                          <td className="px-3 py-2.5 text-right font-semibold text-green-700">{cobrado > 0 ? ars(cobrado) : '—'}</td>
+                          <td className="px-3 py-2.5 text-right font-semibold">{aCobrar > 0 ? <span className="text-red-600">{ars(aCobrar)}</span> : <span className="text-[#aaa]">—</span>}</td>
+                        </tr>,
+                        isExp && payments.length > 0 ? (
+                          <tr key={`${r.id}-d`} className={bg}>
+                            <td colSpan={6} className="px-6 pb-3 pt-1">
+                              <div className="flex flex-wrap gap-2">
+                                {payments.map((p, pi) => (
+                                  <span key={pi} className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-[8px] text-xs font-medium ${tipoCls(p.tipo)}`}>
+                                    <span className="font-semibold">{p.label}</span>
+                                    <span className="opacity-40">·</span>
+                                    <span>{p.fecha || 'sin fecha'}</span>
+                                    <span className="opacity-40">·</span>
+                                    <span>{p.tipo}</span>
+                                    <span className="opacity-40">·</span>
+                                    <span className="font-bold">{ars(p.monto)}</span>
+                                  </span>
+                                ))}
+                              </div>
+                            </td>
+                          </tr>
+                        ) : null,
+                      ].filter(Boolean)
+                    })}
+                  </tbody>
+                </table>
+              </div>
             )}
           </Section>
 

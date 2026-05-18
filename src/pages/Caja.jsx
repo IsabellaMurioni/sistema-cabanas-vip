@@ -1,10 +1,10 @@
-﻿import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import FileUpload, { getPublicUrl } from '../components/FileUpload'
 import { format, parseISO, getMonth, getYear } from 'date-fns'
 import { es } from 'date-fns/locale'
 
-// ─── Constants ─────────────────────────────────────────────
+// --- Constants ---------------------------------------------
 
 const GASTOS_SILVIA = [
   'El Barba / Ferretería', 'Extragas', 'EDEA', 'Tavo Destapador', 'Scyco Agua',
@@ -21,7 +21,7 @@ const NOW_YEAR = new Date().getFullYear()
 const YEARS    = [NOW_YEAR - 1, NOW_YEAR, NOW_YEAR + 1]
 const TODAY    = new Date().toISOString().slice(0, 10)
 
-// ─── Helpers ───────────────────────────────────────────────
+// --- Helpers -----------------------------------------------
 
 const fmtD  = (d) => d ? format(parseISO(d), 'dd/MM/yyyy', { locale: es }) : '—'
 const num   = (v) => Number(v) || 0
@@ -45,7 +45,7 @@ const AMOUNT_CL = {
 const ic = 'field'
 const sc = 'field w-auto'
 
-// ─── UI atoms ──────────────────────────────────────────────
+// --- UI atoms ----------------------------------------------
 
 function BigTotals({ items }) {
   return (
@@ -177,7 +177,30 @@ function ToggleGroup({ options, value, onChange }) {
   )
 }
 
-// ─── CAJA SILVIA ───────────────────────────────────────────
+// --- Reserva sync helper -----------------------------------
+
+async function syncReservaFromCaja(reservas, reservaId, monto, fecha, tipo) {
+  const r = reservas.find(x => x.id === reservaId)
+  if (!r) return
+  const hasSena1 = num(r.sena1_monto) > 0
+  const hasSena2 = num(r.sena2_monto) > 0
+  const updates = {}
+  if (!hasSena1) {
+    updates.sena1_monto = monto
+    updates.sena1_tipo  = tipo
+    updates.sena1_fecha = fecha
+    if (r.estado === 'Pendiente') updates.estado = 'Confirmada'
+  } else if (!hasSena2) {
+    updates.sena2_monto = monto
+    updates.sena2_tipo  = tipo
+    updates.sena2_fecha = fecha
+  }
+  if (Object.keys(updates).length > 0) {
+    await supabase.from('reservas').update(updates).eq('id', reservaId)
+  }
+}
+
+// --- CAJA SILVIA -------------------------------------------
 
 const EMPTY_S = {
   tipo: 'ingreso',
@@ -287,6 +310,9 @@ function SilviaCaja({ reservas }) {
       retiro_dolares:  0,
       comprobante:     form.comprobante || null,
     })
+    if (isIngAlquiler && form._reservaId) {
+      await syncReservaFromCaja(reservas, form._reservaId, m, form.fecha, 'Efectivo')
+    }
     setSaving(false); closeModal(); load()
   }
 
@@ -439,7 +465,7 @@ function SilviaCaja({ reservas }) {
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <Label required>Fecha</Label>
                 <input type="date" value={form.fecha} onChange={e => set('fecha', e.target.value)} required className={ic} />
@@ -466,7 +492,7 @@ function SilviaCaja({ reservas }) {
   )
 }
 
-// ─── CAJA JULI ─────────────────────────────────────────────
+// --- CAJA JULI ---------------------------------------------
 
 const EMPTY_J = {
   seccion: 'main', tipo_main: 'ingreso',
@@ -687,7 +713,7 @@ function JuliCaja() {
                 <Label>Tipo</Label>
                 <ToggleGroup
                   value={form.tipo_main}
-                  onChange={v => set('tipo_main', v)}
+                  onChange={v => setForm(f => ({ ...f, tipo_main: v, detalle: '' }))}
                   options={[
                     { v: 'ingreso', l: 'Ingreso', active: 'bg-green-600 text-white' },
                     { v: 'egreso',  l: 'Egreso',  active: 'bg-red-500 text-white'   },
@@ -695,7 +721,7 @@ function JuliCaja() {
                 />
               </div>
             )}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <Label required>Fecha</Label>
                 <input type="date" value={form.fecha} onChange={e => set('fecha', e.target.value)} required className={ic} />
@@ -705,7 +731,7 @@ function JuliCaja() {
                 <input type="number" min={0} step="0.01" value={form.importe} onChange={e => set('importe', e.target.value)} required className={ic} placeholder="0" />
               </div>
               <div>
-                {form.seccion === 'gastos' ? (
+                {(form.seccion === 'gastos' || (form.seccion === 'main' && form.tipo_main === 'egreso')) ? (
                   <>
                     <Label required>Categoría</Label>
                     <select value={form.detalle} onChange={e => set('detalle', e.target.value)} required className={ic}>
@@ -727,7 +753,7 @@ function JuliCaja() {
             </div>
             {form.seccion === 'gastos' && (
               <>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <Label>Transf. a Silvia ($)</Label>
                     <input type="number" min={0} step="0.01" value={form.transferencia_silvia} onChange={e => set('transferencia_silvia', e.target.value)} className={ic} placeholder="0" />
@@ -737,7 +763,7 @@ function JuliCaja() {
                     <input type="number" min={0} step="0.01" value={form.devolucion} onChange={e => set('devolucion', e.target.value)} className={ic} placeholder="0" />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-3 items-end">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
                   <div>
                     <Label>Modalidad de pago</Label>
                     <select value={form.modalidad_pago} onChange={e => set('modalidad_pago', e.target.value)} className={ic}>
@@ -761,7 +787,7 @@ function JuliCaja() {
   )
 }
 
-// ─── CAJA TRANSFER (Banco / Mercado Pago) ──────────────────
+// --- CAJA TRANSFER (Banco / Mercado Pago) ------------------
 
 const emptyTransfer = () => ({
   tipo: 'ingreso',
@@ -848,6 +874,10 @@ function CajaTransfer({ tabla, titulo, reservas }) {
       egreso:         form.tipo === 'egreso'  ? num(form.monto) : 0,
       comprobante:    form.comprobante    || null,
     })
+    if (form.tipo === 'ingreso' && form._reservaId) {
+      const tipoSena = tabla === 'caja_mercado_pago' ? 'Mercado Pago' : 'Banco'
+      await syncReservaFromCaja(reservas, form._reservaId, num(form.monto), form.fecha, tipoSena)
+    }
     setSaving(false); closeModal(); load()
   }
 
@@ -938,17 +968,19 @@ function CajaTransfer({ tabla, titulo, reservas }) {
               />
             </div>
 
-            <div>
-              <Label>Vincular reserva (opcional)</Label>
-              <select value={form._reservaId} onChange={e => handleReserva(e.target.value)} className={ic}>
-                <option value="">— Sin vincular —</option>
-                {reservas.map(r => (
-                  <option key={r.id} value={r.id}>{r.codigo} · {r.nombre_apellido}</option>
-                ))}
-              </select>
-            </div>
+            {form.tipo === 'ingreso' && (
+              <div>
+                <Label>Vincular reserva (opcional)</Label>
+                <select value={form._reservaId} onChange={e => handleReserva(e.target.value)} className={ic}>
+                  <option value="">— Sin vincular —</option>
+                  {reservas.map(r => (
+                    <option key={r.id} value={r.id}>{r.codigo} · {r.nombre_apellido}</option>
+                  ))}
+                </select>
+              </div>
+            )}
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <Label required>Fecha</Label>
                 <input type="date" value={form.fecha} onChange={e => set('fecha', e.target.value)} required className={ic} />
@@ -973,7 +1005,7 @@ function CajaTransfer({ tabla, titulo, reservas }) {
   )
 }
 
-// ─── MAIN ──────────────────────────────────────────────────
+// --- MAIN --------------------------------------------------
 
 const TABS = [
   { v: 'silvia', l: 'Caja Silvia' },

@@ -369,6 +369,24 @@ export default function ReservaForm() {
       return
     }
 
+    if (form.cabana && form.fecha_entrada && form.fecha_salida) {
+      let q = supabase
+        .from('reservas')
+        .select('nombre_apellido, fecha_entrada, fecha_salida')
+        .eq('cabana', form.cabana)
+        .neq('estado', 'Cancelada')
+        .lt('fecha_entrada', form.fecha_salida)
+        .gt('fecha_salida', form.fecha_entrada)
+      if (isEdit) q = q.neq('id', id)
+      const { data: overlaps } = await q
+      if (overlaps && overlaps.length > 0) {
+        const o = overlaps[0]
+        const fmt = (d) => new Date(d + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+        setError(`La cabaña ${form.cabana} ya tiene una reserva del ${fmt(o.fecha_entrada)} al ${fmt(o.fecha_salida)} (${o.nombre_apellido}). Elegí otras fechas o una cabaña diferente.`)
+        return
+      }
+    }
+
     setSaving(true)
 
     // Auto-cambiar estado Pendiente → Confirmada si hay al menos un pago
@@ -574,7 +592,7 @@ export default function ReservaForm() {
           <h3 className="text-[18px] font-semibold text-[#111111] mb-4">
             Información del huésped
           </h3>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="col-span-2">
               <Field label="Nombre y apellido" required>
                 <input
@@ -634,7 +652,7 @@ export default function ReservaForm() {
           <h3 className="text-[18px] font-semibold text-[#111111] mb-4">
             Datos de la reserva
           </h3>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Código de reserva">
               <input
                 type="text"
@@ -764,7 +782,7 @@ export default function ReservaForm() {
 
               {form.descuento_aplicar && (
                 <div className="bg-green-50 border border-green-200 rounded-xl p-4 space-y-3">
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <Field label="Porcentaje (%)">
                       <input
                         type="number"
@@ -819,7 +837,7 @@ export default function ReservaForm() {
           {/* 1ª Seña */}
           <div className="card-sm">
             <p className="text-sm font-semibold text-[#d2ab84] mb-3">1ª Seña</p>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Field label="Monto ($)">
                 <input
                   type="number"
@@ -863,7 +881,7 @@ export default function ReservaForm() {
           {/* 2ª Seña */}
           <div className="card-sm">
             <p className="text-sm font-semibold text-[#d2ab84] mb-3">2ª Seña</p>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Field label="Monto ($)">
                 <input
                   type="number"
@@ -907,7 +925,7 @@ export default function ReservaForm() {
           {/* Pago en cabaña */}
           <div className="card-sm">
             <p className="text-sm font-semibold text-[#d2ab84] mb-3">Pago en cabaña</p>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Field label="Monto ($)">
                 <input
                   type="number"
