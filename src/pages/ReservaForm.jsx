@@ -227,7 +227,6 @@ export default function ReservaForm() {
     if (isEdit) return
     if (!form.fecha_entrada || !form.fecha_salida || !form.noches || form.noches <= 0) {
       setPrecioNombrePeriodo('')
-      setPrecioMinWarning(null)
       setSinPeriodo(false)
       setPrecioBaseNeto(null)
       return
