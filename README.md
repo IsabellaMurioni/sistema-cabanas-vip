@@ -50,11 +50,21 @@ npm run dev
 ## Estructura del proyecto
 
 ```
-src/
-  pages/       # Reservas, ReservaForm, Disponibilidad, Caja, Ganancias, Login
-  components/  # FileUpload, CalendarPicker
-  lib/         # supabase.js, email.js, cabanas.js
-  utils/       # emailTemplates.js
-public/
-  favicon.svg
+├── public/                  # Archivos estáticos (favicon, iconos)
+├── src/
+│   ├── assets/              # Imágenes y recursos estáticos
+│   ├── components/          # Componentes reutilizables (Layout, FileUpload, PrivateRoute)
+│   ├── context/             # Contextos de React (AuthContext)
+│   ├── lib/                 # Clientes e integraciones externas (supabase, email, cabanas)
+│   ├── pages/               # Vistas principales (Reservas, Caja, Disponibilidad, Ganancias…)
+│   ├── utils/               # Funciones puras auxiliares (emailTemplates)
+│   ├── App.jsx              # Rutas y estructura principal
+│   ├── main.jsx             # Punto de entrada
+│   └── index.css            # Estilos globales y design system (Tailwind + clases custom)
+├── supabase/
+│   ├── migrations/          # Scripts SQL en orden de aplicación (001_schema → 009_clean)
+│   └── functions/           # Edge Functions de Supabase (check-reservas-vencidas)
+├── .env.example             # Variables de entorno requeridas (sin valores reales)
+├── vercel.json              # Configuración de Vercel (SPA rewrite)
+└── vite.config.js           # Configuración de Vite
 ```
