@@ -1,16 +1,60 @@
-# React + Vite
+# Cabañas VIP — Sistema de Reservas
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Sistema de gestión interna de reservas para complejo de cabañas. Permite administrar reservas, pagos, disponibilidad y caja desde una única interfaz web.
 
-Currently, two official plugins are available:
+## Stack
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+| Capa | Tecnología |
+|------|------------|
+| Frontend | React 18 + Vite + Tailwind CSS |
+| Backend / DB | Supabase (PostgreSQL + Storage) |
+| Email | EmailJS (transaccional, sin servidor) |
+| Deploy | Vercel |
 
-## React Compiler
+## Features
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- **Reservas** — alta y edición completa, historial de pagos (señas + pago en cabaña), confirmación automática al registrar pago, validación de solapamientos por cabaña
+- **Disponibilidad** — timeline mensual/anual por cabaña con scroll horizontal, vista mobile con cards, fechas ocupadas visibles antes de seleccionar
+- **Caja** — registro de movimientos para Silvia, Julia, Banco y Mercado Pago; sincronización automática con reservas
+- **Ganancias** — resumen por mes, desglose de reservas por período con detalle expandible
+- **Emails automáticos** — confirmación de reserva pendiente y recibos de pago vía EmailJS
 
-## Expanding the ESLint configuration
+## Setup local
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+```bash
+npm install
+cp .env.example .env
+# completar .env con las credenciales reales (ver tabla abajo)
+npm run dev
+```
+
+## Variables de entorno
+
+| Variable | Descripción |
+|----------|-------------|
+| `VITE_SUPABASE_URL` | URL del proyecto en Supabase |
+| `VITE_SUPABASE_ANON_KEY` | Clave pública anon de Supabase |
+| `VITE_EMAILJS_SERVICE_ID` | ID del servicio en EmailJS |
+| `VITE_EMAILJS_PUBLIC_KEY` | Clave pública de EmailJS |
+| `VITE_EMAILJS_PRIVATE_KEY` | Clave privada de EmailJS (requerida en producción) |
+| `VITE_EMAILJS_TEMPLATE_ID` | ID del template de email |
+
+> La `VITE_EMAILJS_PRIVATE_KEY` es necesaria en producción (Vercel) para que los emails funcionen fuera del dominio local, ya que el plan gratuito de EmailJS no permite agregar dominios personalizados.
+
+## Deploy en Vercel
+
+1. Conectar el repositorio a Vercel
+2. Agregar todas las variables de entorno en **Settings → Environment Variables**
+3. El deploy se dispara automáticamente en cada push a `main`
+
+## Estructura del proyecto
+
+```
+src/
+  pages/       # Reservas, ReservaForm, Disponibilidad, Caja, Ganancias, Login
+  components/  # FileUpload, CalendarPicker
+  lib/         # supabase.js, email.js, cabanas.js
+  utils/       # emailTemplates.js
+public/
+  favicon.svg
+```

@@ -134,6 +134,17 @@ async function syncCajaSilvia(codigo, nombre, origMonto, nuevoMonto, nuevaFecha)
   }
 }
 
+function getConflicto(entrada, salida, ranges) {
+  if (!entrada || !salida || !ranges || ranges.length === 0) return ''
+  const fmt = (d) => new Date(d + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  for (const o of ranges) {
+    if (entrada < o.fecha_salida && salida > o.fecha_entrada) {
+      return `Fechas ocupadas: ${o.nombre_apellido} (${fmt(o.fecha_entrada)} al ${fmt(o.fecha_salida)})`
+    }
+  }
+  return ''
+}
+
 export default function ReservaForm() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -144,11 +155,14 @@ export default function ReservaForm() {
   const [loading, setLoading] = useState(isEdit)
   const [error, setError] = useState('')
   const [precioNombrePeriodo, setPrecioNombrePeriodo] = useState('')
-  const [precioMinWarning, setPrecioMinWarning] = useState(null)
+
   const [sinPeriodo, setSinPeriodo] = useState(false)
   const [precioBaseNeto, setPrecioBaseNeto] = useState(null)
   const [montoModificado, setMontoModificado] = useState(false)
   const [originalPagos, setOriginalPagos] = useState(null)
+  const [ocupadas, setOcupadas] = useState([])
+  const [fechaConflicto, setFechaConflicto] = useState('')
+  const [minimoNochesError, setMinimoNochesError] = useState('')
 
   const set = (field, value) => setForm((f) => ({ ...f, [field]: value }))
 
@@ -233,7 +247,7 @@ export default function ReservaForm() {
 
       if (errPeriodos || !periodos || periodos.length === 0) {
         setSinPeriodo(true); setPrecioNombrePeriodo(''); setPrecioBaseNeto(null)
-        setPrecioMinWarning(null); return
+        return
       }
 
       // ISO date strings are directly comparable as strings (lexicographic = chronologic)
@@ -249,16 +263,11 @@ export default function ReservaForm() {
       if (!periodoEntrada) {
         console.log('[Precios] ✗ Sin período para:', fechaEntrada)
         setSinPeriodo(true); setPrecioNombrePeriodo(''); setPrecioBaseNeto(null)
-        setPrecioMinWarning(null); return
+        return
       }
 
       console.log('[Precios] ✓ Período:', periodoEntrada.nombre)
       setSinPeriodo(false)
-
-      const warn = Number(periodoEntrada.minimo_noches) > form.noches
-        ? `Mínimo ${periodoEntrada.minimo_noches} noches para este período`
-        : null
-      setPrecioMinWarning(warn)
 
       // Fetch prices for all periods × safePax
       const { data: preciosPax, error: errPax } = await supabase
@@ -341,17 +350,55 @@ export default function ReservaForm() {
     set('monto_total', String(Math.round(precioBaseNeto * (1 - pct / 100))))
   }, [form.descuento_aplicar, form.descuento_porcentaje, precioBaseNeto, isEdit])
 
+  useEffect(() => {
+    if (!form.fecha_entrada || !form.noches || form.noches <= 0) {
+      setMinimoNochesError(''); return
+    }
+    supabase
+      .from('periodos_precios')
+      .select('nombre, minimo_noches')
+      .order('orden')
+      .then(({ data }) => {
+        if (!data || data.length === 0) { setMinimoNochesError(''); return }
+        const p = data.find(period =>
+          form.fecha_entrada >= period.fecha_inicio &&
+          (!period.fecha_fin || form.fecha_entrada < period.fecha_fin)
+        )
+        if (!p) { setMinimoNochesError(''); return }
+        const min = Number(p.minimo_noches) || 0
+        setMinimoNochesError(min > 0 && form.noches < min
+          ? `El período "${p.nombre}" requiere mínimo ${min} noches (reserva tiene ${form.noches})`
+          : '')
+      })
+  }, [form.fecha_entrada, form.noches])
+
+  useEffect(() => {
+    if (!form.cabana) { setOcupadas([]); setFechaConflicto(''); return }
+    supabase
+      .from('reservas')
+      .select('id, fecha_entrada, fecha_salida, nombre_apellido')
+      .eq('cabana', form.cabana)
+      .neq('estado', 'Cancelada')
+      .then(({ data }) => {
+        const ranges = (data || []).filter(r => !isEdit || String(r.id) !== String(id))
+        setOcupadas(ranges)
+        setFechaConflicto(getConflicto(form.fecha_entrada, form.fecha_salida, ranges))
+      })
+  }, [form.cabana, isEdit, id])
+
   const handleFechaEntrada = (value) => {
     const noches = calcNoches(value, form.fecha_salida)
     const mes = getMes(value)
     setMontoModificado(false)
     setForm((f) => ({ ...f, fecha_entrada: value, noches, mes }))
+    setFechaConflicto(getConflicto(value, form.fecha_salida, ocupadas))
   }
 
   const handleFechaSalida = (value) => {
     const noches = calcNoches(form.fecha_entrada, value)
     setMontoModificado(false)
     setForm((f) => ({ ...f, fecha_salida: value, noches }))
+    setFechaConflicto(getConflicto(form.fecha_entrada, value, ocupadas))
   }
 
   const saldo =
@@ -366,6 +413,16 @@ export default function ReservaForm() {
 
     if (form.fecha_entrada && form.fecha_salida && form.fecha_salida <= form.fecha_entrada) {
       setError('La fecha de salida debe ser posterior a la de entrada.')
+      return
+    }
+
+    if (minimoNochesError) {
+      setError(minimoNochesError + '. Ajustá las fechas para cumplir el mínimo.')
+      return
+    }
+
+    if (fechaConflicto) {
+      setError(fechaConflicto + '. Elegí otras fechas o una cabaña diferente.')
       return
     }
 
@@ -672,6 +729,21 @@ export default function ReservaForm() {
                 {CABANAS.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
             </Field>
+            {form.cabana && ocupadas.length > 0 && (
+              <div className="col-span-2 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">
+                <p className="text-xs font-semibold text-orange-700 mb-1.5">Fechas ya reservadas en {form.cabana}:</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {ocupadas.map((o, i) => {
+                    const fmt = (d) => new Date(d + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })
+                    return (
+                      <span key={i} className="text-xs bg-orange-100 text-orange-800 rounded px-2 py-0.5">
+                        {fmt(o.fecha_entrada)} – {fmt(o.fecha_salida)} · {o.nombre_apellido.split(',')[0].split(' ')[0]}
+                      </span>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
             <Field label="PAX (personas)">
               <input
                 type="number"
@@ -711,6 +783,16 @@ export default function ReservaForm() {
                 className={inputClass}
               />
             </Field>
+            {fechaConflicto && (
+              <div className="col-span-2 bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2 text-sm font-medium">
+                {fechaConflicto}
+              </div>
+            )}
+            {minimoNochesError && (
+              <div className="col-span-2 bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2 text-sm font-medium">
+                {minimoNochesError}
+              </div>
+            )}
             <Field label="Noches">
               <input
                 type="number"
@@ -751,9 +833,7 @@ export default function ReservaForm() {
                       {precioBaseNeto === null && ' · sin precios cargados, ingresá el monto manualmente'}
                     </p>
                   )}
-                  {precioMinWarning && (
-                    <p className="text-xs text-red-500 mt-1 font-medium">{precioMinWarning}</p>
-                  )}
+
                   {sinPeriodo && form.fecha_entrada && (
                     <p className="text-xs text-orange-500 mt-1">
                       No hay período configurado para estas fechas. Podés ingresar el monto manualmente.
@@ -985,7 +1065,7 @@ export default function ReservaForm() {
           </button>
           <button
             type="submit"
-            disabled={saving}
+            disabled={saving || !!fechaConflicto || !!minimoNochesError}
             className="btn-primary flex-1 py-2.5 disabled:opacity-50"
           >
             {saving ? 'Guardando...' : isEdit ? 'Guardar cambios' : 'Crear reserva'}
