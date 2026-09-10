@@ -4,6 +4,14 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --color-primario: #d2ab84;
+  --color-secundario: #fee7ef;
+  --color-primario-hover: #c49870;
+  --color-fila-hover: #fff4e8;
+  --color-boton-secundario-hover: #ffe0c0;
+}
+
 @layer base {
   *, *::before, *::after { box-sizing: border-box; }
 
@@ -30,18 +38,18 @@
 
   /* ── Cards ─────────────────────────────────────────────── */
   .card {
-    background: #fee7ef;
+    background: var(--color-secundario);
     border: 1px solid #f0e6d8;
     border-radius: 16px;
     padding: 24px;
     transition: border-color 0.2s ease;
   }
   .card:hover {
-    border-color: #d2ab84;
+    border-color: var(--color-primario);
   }
 
   .card-sm {
-    background: #fee7ef;
+    background: var(--color-secundario);
     border: 1px solid #f0e6d8;
     border-radius: 12px;
     padding: 16px;
@@ -49,7 +57,7 @@
 
   /* ── Inputs ─────────────────────────────────────────────── */
   .field {
-    background: #fee7ef;
+    background: var(--color-secundario);
     border: 1px solid #f0e6d8;
     border-radius: 10px;
     padding: 10px 14px;
@@ -61,7 +69,7 @@
   }
   .field::placeholder { color: #aaaaaa; }
   .field:focus {
-    border-color: #d2ab84;
+    border-color: var(--color-primario);
     outline: none;
   }
   .field:disabled {
@@ -78,7 +86,7 @@
   }
 
   .btn-primary {
-    background: #d2ab84;
+    background: var(--color-primario);
     color: #ffffff;
     border-radius: 10px;
     font-weight: 600;
@@ -91,12 +99,12 @@
     align-items: center;
     gap: 6px;
   }
-  .btn-primary:hover  { background: #c49870; transform: translateY(-1px); }
+  .btn-primary:hover  { background: var(--color-primario-hover); transform: translateY(-1px); }
   .btn-primary:active { transform: scale(0.98); }
   .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 
   .btn-secondary {
-    background: #fee7ef;
+    background: var(--color-secundario);
     color: #333333;
     border-radius: 10px;
     font-weight: 500;
@@ -109,7 +117,7 @@
     align-items: center;
     gap: 6px;
   }
-  .btn-secondary:hover  { background: #ffe0c0; border-color: #d2ab84; transform: translateY(-1px); }
+  .btn-secondary:hover  { background: var(--color-boton-secundario-hover); border-color: var(--color-primario); transform: translateY(-1px); }
   .btn-secondary:active { transform: scale(0.98); }
 
   .btn-danger {
@@ -163,10 +171,10 @@
     transition: box-shadow 0.15s ease, background 0.15s ease;
   }
   .tbl tbody tr:nth-child(odd)  { background: #ffffff; }
-  .tbl tbody tr:nth-child(even) { background: #fee7ef; }
+  .tbl tbody tr:nth-child(even) { background: var(--color-secundario); }
   .tbl tbody tr:hover {
-    box-shadow: inset 3px 0 0 #d2ab84;
-    background: #fff4e8;
+    box-shadow: inset 3px 0 0 var(--color-primario);
+    background: var(--color-fila-hover);
   }
   .tbl tbody td {
     padding: 10px 14px;
@@ -195,10 +203,10 @@
 }
 
 @layer utilities {
-  .text-accent   { color: #d2ab84; }
-  .bg-accent     { background: #d2ab84; }
-  .bg-secondary  { background: #fee7ef; }
-  .border-accent { border-color: #d2ab84; }
+  .text-accent   { color: var(--color-primario); }
+  .bg-accent     { background: var(--color-primario); }
+  .bg-secondary  { background: var(--color-secundario); }
+  .border-accent { border-color: var(--color-primario); }
   .text-main     { color: #333333; }
   .text-soft     { color: #888888; }
   .text-dark     { color: #111111; }

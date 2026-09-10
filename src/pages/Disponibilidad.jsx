@@ -1,7 +1,7 @@
 ﻿import { useEffect, useMemo, useRef, useState, Fragment } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { CABANAS, getCabanaColor } from '../lib/cabanas'
+import { useComplejo } from '../context/ComplejoContext'
 import {
   addDays, addMonths, subMonths, differenceInDays,
   startOfMonth, getDaysInMonth, getDay,
@@ -57,7 +57,7 @@ function CalendarPicker({ value, onChange, label }) {
           onClick={() => { setView(startOfMonth(value)); setOpen(!open) }}
           className="field flex items-center gap-2 cursor-pointer w-auto"
         >
-          <svg className="w-4 h-4 text-[#d2ab84]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-4 h-4 text-[var(--color-primario)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
           </svg>
           <span className="font-medium text-[#333] capitalize">
@@ -75,7 +75,7 @@ function CalendarPicker({ value, onChange, label }) {
             <button
               type="button"
               onClick={() => setView(subMonths(view, 1))}
-              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-[#fee7ef] text-[#333] font-bold text-lg transition-colors"
+              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-[var(--color-secundario)] text-[#333] font-bold text-lg transition-colors"
             >‹</button>
             <span className="font-semibold text-sm text-[#111] capitalize">
               {format(view, 'MMMM yyyy', { locale: es })}
@@ -83,7 +83,7 @@ function CalendarPicker({ value, onChange, label }) {
             <button
               type="button"
               onClick={() => setView(addMonths(view, 1))}
-              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-[#fee7ef] text-[#333] font-bold text-lg transition-colors"
+              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-[var(--color-secundario)] text-[#333] font-bold text-lg transition-colors"
             >›</button>
           </div>
 
@@ -106,7 +106,7 @@ function CalendarPicker({ value, onChange, label }) {
                   onClick={() => { onChange(date); setOpen(false) }}
                   className={`
                     h-8 w-full rounded-lg text-xs font-medium transition-colors
-                    ${selected ? 'bg-[#d2ab84] text-white' : isT ? 'bg-orange-100 text-orange-700 font-bold' : 'hover:bg-[#fee7ef] text-[#333]'}
+                    ${selected ? 'bg-[var(--color-primario)] text-white' : isT ? 'bg-orange-100 text-orange-700 font-bold' : 'hover:bg-[var(--color-secundario)] text-[#333]'}
                   `}
                 >
                   {day}
@@ -118,7 +118,7 @@ function CalendarPicker({ value, onChange, label }) {
           <button
             type="button"
             onClick={() => { onChange(today); setOpen(false) }}
-            className="w-full mt-3 text-xs text-[#d2ab84] hover:underline text-center"
+            className="w-full mt-3 text-xs text-[var(--color-primario)] hover:underline text-center"
           >
             Ir a hoy
           </button>
@@ -132,7 +132,7 @@ function CalendarPicker({ value, onChange, label }) {
 function DayHeaders({ startDate, numDays }) {
   const today = startOfToday()
   return (
-    <div style={{ display: 'flex', width: numDays * DAY_W, minWidth: numDays * DAY_W, flexShrink: 0, borderBottom: '1px solid #f0e6d8', backgroundColor: '#fee7ef' }}>
+    <div style={{ display: 'flex', width: numDays * DAY_W, minWidth: numDays * DAY_W, flexShrink: 0, borderBottom: '1px solid #f0e6d8', backgroundColor: 'var(--color-secundario)' }}>
       {Array.from({ length: numDays }, (_, i) => {
         const day = addDays(startDate, i)
         const dow = getDay(day)
@@ -164,6 +164,7 @@ function DayHeaders({ startDate, numDays }) {
 
 // ── TimelineRow ─────────────────────────────────────────────
 function TimelineRow({ cabana, reservas, startDate, endDate, height = 40, onReservaClick }) {
+  const { getCabanaColor } = useComplejo()
   const today = startOfToday()
   const numDays = differenceInDays(endDate, startDate) + 1
   const todayOffset = differenceInDays(today, startDate)
@@ -305,6 +306,7 @@ function TimelineRow({ cabana, reservas, startDate, endDate, height = 40, onRese
 
 // ── ReservaPopup ────────────────────────────────────────────
 function ReservaPopup({ reserva, onClose, onView }) {
+  const { getCabanaColor } = useComplejo()
   const saldo =
     Number(reserva.monto_total || 0) -
     Number(reserva.sena1_monto || 0) -
@@ -364,7 +366,7 @@ function ReservaPopup({ reserva, onClose, onView }) {
 
           {reserva.monto_total > 0 && (
             <div className="flex gap-2">
-              <div className="flex-1 bg-[#fee7ef] rounded-[10px] p-2.5 text-center">
+              <div className="flex-1 bg-[var(--color-secundario)] rounded-[10px] p-2.5 text-center">
                 <p className="section-label mb-1">Total</p>
                 <p className="font-bold text-[#111] text-sm">
                   ${Number(reserva.monto_total).toLocaleString('es-AR')}
@@ -400,6 +402,7 @@ function ReservaPopup({ reserva, onClose, onView }) {
 // ── Main component ──────────────────────────────────────────
 export default function Disponibilidad() {
   const navigate = useNavigate()
+  const { cabanasNombres: CABANAS, getCabanaColor, cabanasPorGrupo, complejoActivo } = useComplejo()
   const today = startOfToday()
 
   const [startDate, setStartDate] = useState(today)
@@ -413,16 +416,21 @@ export default function Disponibilidad() {
   const numDays = differenceInDays(endDate, startDate) + 1
 
   useEffect(() => {
+    if (!complejoActivo) {
+      setReservas([])
+      return
+    }
     setLoading(true)
     supabase
       .from('reservas')
       .select('id, codigo, nombre_apellido, cabana, fecha_entrada, fecha_salida, estado, pax, noches, monto_total, sena1_monto, sena2_monto, pago_cabana_monto, celular')
+      .eq('complejo_id', complejoActivo.id)
       .neq('estado', 'Cancelada')
       .then(({ data }) => {
         setReservas(data || [])
         setLoading(false)
       })
-  }, [])
+  }, [complejoActivo?.id])
 
   const cabanaStatus = useMemo(() => {
     const tStr = todayStr()
@@ -513,59 +521,84 @@ export default function Disponibilidad() {
             {/* Left: cabin names (fixed, no scroll) */}
             <div style={{ width: 136, minWidth: 136, flexShrink: 0, borderRight: '1px solid #f0e6d8' }}>
               {/* Header spacer — matches DayHeaders height (44px) */}
-              <div style={{ height: 44, borderBottom: '1px solid #f0e6d8', backgroundColor: '#fee7ef' }} />
-              {/* Cabin rows */}
-              {CABANAS.map((cabana, ci) => {
-                const st = cabanaStatus[cabana]
-                return (
-                  <div
-                    key={cabana}
-                    onClick={() => { setSelectedCabana(cabana); setShowAll(false) }}
-                    style={{
-                      height: 36, display: 'flex', alignItems: 'center',
-                      gap: 8, paddingLeft: 10, paddingRight: 8,
-                      borderBottom: '1px solid #f0e6d8',
-                      borderLeft: `3px solid ${getCabanaColor(cabana)}`,
-                      backgroundColor: ci % 2 === 0 ? '#fff' : 'rgba(254,231,239,0.35)',
-                      cursor: 'pointer', transition: 'background 0.15s',
-                    }}
-                    onMouseEnter={e => e.currentTarget.style.backgroundColor = '#fee7ef'}
-                    onMouseLeave={e => e.currentTarget.style.backgroundColor = ci % 2 === 0 ? '#fff' : 'rgba(254,231,239,0.35)'}
-                  >
-                    <span style={{
-                      width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
-                      backgroundColor: st?.occupied ? getCabanaColor(cabana) : '#4ade80',
-                    }} />
-                    <span style={{ fontSize: 12, fontWeight: 600, color: '#333', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {cabana}
-                    </span>
-                  </div>
-                )
-              })}
+              <div style={{ height: 44, borderBottom: '1px solid #f0e6d8', backgroundColor: 'var(--color-secundario)' }} />
+              {/* Cabin rows, grouped by seccion.grupo when present */}
+              {cabanasPorGrupo.map((seccion, si) => (
+                <Fragment key={seccion.grupo || `sin-grupo-${si}`}>
+                  {seccion.grupo && (
+                    <div style={{
+                      height: 24, display: 'flex', alignItems: 'center',
+                      paddingLeft: 10, fontSize: 10, fontWeight: 700,
+                      color: '#888', textTransform: 'uppercase', letterSpacing: '0.04em',
+                      backgroundColor: '#f7f3ee', borderBottom: '1px solid #f0e6d8',
+                    }}>
+                      {seccion.grupo}
+                    </div>
+                  )}
+                  {seccion.cabanas.map((cabana) => {
+                    const st = cabanaStatus[cabana]
+                    const ci = CABANAS.indexOf(cabana)
+                    return (
+                      <div
+                        key={cabana}
+                        onClick={() => { setSelectedCabana(cabana); setShowAll(false) }}
+                        style={{
+                          height: 36, display: 'flex', alignItems: 'center',
+                          gap: 8, paddingLeft: 10, paddingRight: 8,
+                          borderBottom: '1px solid #f0e6d8',
+                          borderLeft: `3px solid ${getCabanaColor(cabana)}`,
+                          backgroundColor: ci % 2 === 0 ? '#fff' : 'rgba(254,231,239,0.35)',
+                          cursor: 'pointer', transition: 'background 0.15s',
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.backgroundColor = 'var(--color-secundario)'}
+                        onMouseLeave={e => e.currentTarget.style.backgroundColor = ci % 2 === 0 ? '#fff' : 'rgba(254,231,239,0.35)'}
+                      >
+                        <span style={{
+                          width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
+                          backgroundColor: st?.occupied ? getCabanaColor(cabana) : '#4ade80',
+                        }} />
+                        <span style={{ fontSize: 12, fontWeight: 600, color: '#333', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {cabana}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </Fragment>
+              ))}
             </div>
 
             {/* Right: scrollable timeline */}
             <div style={{ flex: 1, overflowX: 'auto', overflowY: 'hidden' }}>
               <div style={{ width: numDays * DAY_W, minWidth: numDays * DAY_W }}>
                 <DayHeaders startDate={startDate} numDays={numDays} />
-                {CABANAS.map((cabana, ci) => (
-                  <div
-                    key={cabana}
-                    style={{
-                      height: 36, borderBottom: '1px solid #f0e6d8',
-                      backgroundColor: ci % 2 === 0 ? '#fff' : 'rgba(254,231,239,0.35)',
-                      overflow: 'visible',
-                    }}
-                  >
-                    <TimelineRow
-                      cabana={cabana}
-                      reservas={reservas}
-                      startDate={startDate}
-                      endDate={endDate}
-                      height={36}
-                      onReservaClick={setPopup}
-                    />
-                  </div>
+                {cabanasPorGrupo.map((seccion, si) => (
+                  <Fragment key={seccion.grupo || `sin-grupo-${si}`}>
+                    {seccion.grupo && (
+                      <div style={{ height: 24, backgroundColor: '#f7f3ee', borderBottom: '1px solid #f0e6d8' }} />
+                    )}
+                    {seccion.cabanas.map((cabana) => {
+                      const ci = CABANAS.indexOf(cabana)
+                      return (
+                        <div
+                          key={cabana}
+                          style={{
+                            height: 36, borderBottom: '1px solid #f0e6d8',
+                            backgroundColor: ci % 2 === 0 ? '#fff' : 'rgba(254,231,239,0.35)',
+                            overflow: 'visible',
+                          }}
+                        >
+                          <TimelineRow
+                            cabana={cabana}
+                            reservas={reservas}
+                            startDate={startDate}
+                            endDate={endDate}
+                            height={36}
+                            onReservaClick={setPopup}
+                          />
+                        </div>
+                      )
+                    })}
+                  </Fragment>
                 ))}
               </div>
             </div>
@@ -576,23 +609,34 @@ export default function Disponibilidad() {
         <>
         {/* Mobile: compact cabin list */}
         <div className="md:hidden flex flex-col gap-3">
-          <div className="flex gap-2 overflow-x-auto pb-1">
-            {CABANAS.map(cabana => {
-              const st = cabanaStatus[cabana]
-              const sel = selectedCabana === cabana
-              return (
-                <button key={cabana} onClick={() => setSelectedCabana(sel ? null : cabana)}
-                  className="flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all"
-                  style={sel
-                    ? { backgroundColor: getCabanaColor(cabana), borderColor: getCabanaColor(cabana), color: 'white' }
-                    : { backgroundColor: 'white', borderColor: '#f0e6d8', color: '#333' }}
-                >
-                  <span className="inline-block w-1.5 h-1.5 rounded-full mr-1 align-middle"
-                    style={{ backgroundColor: st?.occupied ? getCabanaColor(cabana) : '#4ade80' }} />
-                  {cabana}
-                </button>
-              )
-            })}
+          <div className="flex flex-col gap-1.5">
+            {cabanasPorGrupo.map((seccion, si) => (
+              <div key={seccion.grupo || `sin-grupo-${si}`}>
+                {seccion.grupo && (
+                  <p style={{ fontSize: 10, fontWeight: 700, color: '#888', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '2px 0' }}>
+                    {seccion.grupo}
+                  </p>
+                )}
+                <div className="flex gap-2 overflow-x-auto pb-1">
+                  {seccion.cabanas.map(cabana => {
+                    const st = cabanaStatus[cabana]
+                    const sel = selectedCabana === cabana
+                    return (
+                      <button key={cabana} onClick={() => setSelectedCabana(sel ? null : cabana)}
+                        className="flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all"
+                        style={sel
+                          ? { backgroundColor: getCabanaColor(cabana), borderColor: getCabanaColor(cabana), color: 'white' }
+                          : { backgroundColor: 'white', borderColor: '#f0e6d8', color: '#333' }}
+                      >
+                        <span className="inline-block w-1.5 h-1.5 rounded-full mr-1 align-middle"
+                          style={{ backgroundColor: st?.occupied ? getCabanaColor(cabana) : '#4ade80' }} />
+                        {cabana}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
           {selectedCabana ? (
             <div className="space-y-2">
@@ -601,7 +645,7 @@ export default function Disponibilidad() {
                 .filter(r => r.cabana === selectedCabana)
                 .sort((a, b) => a.fecha_entrada.localeCompare(b.fecha_entrada))
                 .map(r => (
-                  <div key={r.id} className="bg-white border border-[#f0e6d8] rounded-[12px] px-4 py-3 cursor-pointer hover:border-[#d2ab84] transition-colors"
+                  <div key={r.id} className="bg-white border border-[#f0e6d8] rounded-[12px] px-4 py-3 cursor-pointer hover:border-[var(--color-primario)] transition-colors"
                     onClick={() => setPopup(r)}>
                     <div className="flex items-center justify-between mb-1">
                       <span className="font-mono text-xs font-bold" style={{ color: getCabanaColor(selectedCabana) }}>{r.codigo}</span>
@@ -624,7 +668,7 @@ export default function Disponibilidad() {
                 if (!r) return []
                 return [{ ...r, _cabana: cabana }]
               }).sort((a, b) => a.fecha_entrada.localeCompare(b.fecha_entrada)).map(r => (
-                <div key={r.id} className="bg-white border border-[#f0e6d8] rounded-[12px] px-4 py-3 cursor-pointer hover:border-[#d2ab84]"
+                <div key={r.id} className="bg-white border border-[#f0e6d8] rounded-[12px] px-4 py-3 cursor-pointer hover:border-[var(--color-primario)]"
                   onClick={() => setPopup(r)}>
                   <div className="flex items-center gap-2 mb-1">
                     <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: getCabanaColor(r.cabana) }} />
@@ -644,58 +688,71 @@ export default function Disponibilidad() {
           {/* Panel izquierdo: lista cabañas */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 220, width: 220, overflowY: 'auto', flexShrink: 0 }}>
             <p className="section-label px-1 mb-1">Cabañas</p>
-            {CABANAS.map((cabana) => {
-              const st = cabanaStatus[cabana]
-              const selected = selectedCabana === cabana
-              const color = getCabanaColor(cabana)
-              const statusText = st?.current
-                ? st.current.nombre_apellido.split(' ').slice(0, 2).join(' ')
-                : st?.upcoming
-                  ? `Próx: ${format(parseISO(st.upcoming.fecha_entrada), 'dd/MM')}`
-                  : 'Libre'
-              const dotColor = st?.current ? color : st?.upcoming ? '#d2ab84' : '#4ade80'
-              const textColor = st?.current ? color : st?.upcoming ? '#888888' : '#16a34a'
-              return (
-                <button
-                  key={cabana}
-                  onClick={() => setSelectedCabana(cabana)}
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 10,
-                    width: '100%',
-                    padding: '12px 16px',
-                    borderRadius: 10,
-                    border: selected ? `2px solid ${color}` : '1px solid #f0e6d8',
-                    background: selected ? `${color}12` : '#ffffff',
-                    cursor: 'pointer',
-                    boxSizing: 'border-box',
-                    transition: 'border-color 0.15s, background 0.15s',
-                    textAlign: 'left',
-                  }}
-                >
-                  <span style={{
-                    width: 10, height: 10, borderRadius: '50%',
-                    backgroundColor: dotColor, flexShrink: 0,
-                  }} />
-                  <span style={{
-                    fontFamily: "'Inter', sans-serif", fontSize: 14, fontWeight: 500,
-                    color: '#111111', flex: 1, whiteSpace: 'nowrap',
-                    overflow: 'hidden', textOverflow: 'ellipsis',
+            {cabanasPorGrupo.map((seccion, si) => (
+              <Fragment key={seccion.grupo || `sin-grupo-${si}`}>
+                {seccion.grupo && (
+                  <p style={{
+                    fontSize: 10, fontWeight: 700, color: '#888',
+                    textTransform: 'uppercase', letterSpacing: '0.04em',
+                    padding: '6px 4px 2px',
                   }}>
-                    {cabana}
-                  </span>
-                  <span style={{
-                    fontSize: 12, fontWeight: 500, color: textColor,
-                    marginLeft: 'auto', flexShrink: 0, maxWidth: 80,
-                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                  }}>
-                    {statusText}
-                  </span>
-                </button>
-              )
-            })}
+                    {seccion.grupo}
+                  </p>
+                )}
+                {seccion.cabanas.map((cabana) => {
+                  const st = cabanaStatus[cabana]
+                  const selected = selectedCabana === cabana
+                  const color = getCabanaColor(cabana)
+                  const statusText = st?.current
+                    ? st.current.nombre_apellido.split(' ').slice(0, 2).join(' ')
+                    : st?.upcoming
+                      ? `Próx: ${format(parseISO(st.upcoming.fecha_entrada), 'dd/MM')}`
+                      : 'Libre'
+                  const dotColor = st?.current ? color : st?.upcoming ? 'var(--color-primario)' : '#4ade80'
+                  const textColor = st?.current ? color : st?.upcoming ? '#888888' : '#16a34a'
+                  return (
+                    <button
+                      key={cabana}
+                      onClick={() => setSelectedCabana(cabana)}
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 10,
+                        width: '100%',
+                        padding: '12px 16px',
+                        borderRadius: 10,
+                        border: selected ? `2px solid ${color}` : '1px solid #f0e6d8',
+                        background: selected ? `${color}12` : '#ffffff',
+                        cursor: 'pointer',
+                        boxSizing: 'border-box',
+                        transition: 'border-color 0.15s, background 0.15s',
+                        textAlign: 'left',
+                      }}
+                    >
+                      <span style={{
+                        width: 10, height: 10, borderRadius: '50%',
+                        backgroundColor: dotColor, flexShrink: 0,
+                      }} />
+                      <span style={{
+                        fontFamily: "'Inter', sans-serif", fontSize: 14, fontWeight: 500,
+                        color: '#111111', flex: 1, whiteSpace: 'nowrap',
+                        overflow: 'hidden', textOverflow: 'ellipsis',
+                      }}>
+                        {cabana}
+                      </span>
+                      <span style={{
+                        fontSize: 12, fontWeight: 500, color: textColor,
+                        marginLeft: 'auto', flexShrink: 0, maxWidth: 80,
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      }}>
+                        {statusText}
+                      </span>
+                    </button>
+                  )
+                })}
+              </Fragment>
+            ))}
           </div>
 
           {/* Panel derecho: timeline */}
@@ -766,7 +823,7 @@ export default function Disponibilidad() {
                       .map((r) => (
                         <div
                           key={r.id}
-                          className="flex items-center justify-between text-sm bg-[#fee7ef] border border-[#f0e6d8] rounded-[10px] px-3 py-2 cursor-pointer hover:border-[#d2ab84] transition-colors"
+                          className="flex items-center justify-between text-sm bg-[var(--color-secundario)] border border-[#f0e6d8] rounded-[10px] px-3 py-2 cursor-pointer hover:border-[var(--color-primario)] transition-colors"
                           onClick={() => setPopup(r)}
                         >
                           <div className="flex items-center gap-2">
@@ -807,7 +864,7 @@ export default function Disponibilidad() {
         <ReservaPopup
           reserva={popup}
           onClose={() => setPopup(null)}
-          onView={() => { navigate(`/reservas/${popup.id}`); setPopup(null) }}
+          onView={() => { navigate(`/${complejoActivo.slug}/reservas/${popup.id}`); setPopup(null) }}
         />
       )}
     </div>

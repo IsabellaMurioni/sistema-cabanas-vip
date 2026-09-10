@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { format, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { getPublicUrl } from '../components/FileUpload'
+import { useComplejo } from '../context/ComplejoContext'
 
 const estadoBadge = {
   Pendiente:  'badge badge-pendiente',
@@ -39,7 +40,7 @@ function Comprobante({ path, label }) {
       <img src={url} alt={label} className="h-20 rounded-[10px] object-cover cursor-pointer hover:opacity-80 transition-opacity border border-[#f0e6d8]" />
     </a>
   ) : (
-    <a href={url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-sm text-[#d2ab84] hover:underline font-medium">
+    <a href={url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-sm text-[var(--color-primario)] hover:underline font-medium">
       <span>📄</span> Ver PDF
     </a>
   )
@@ -49,7 +50,7 @@ function PagoCard({ titulo, monto, tipo, fecha, comprobante }) {
   if (!monto && !comprobante) return null
   return (
     <div className="card-sm">
-      <p className="text-sm font-semibold text-[#d2ab84] mb-3">{titulo}</p>
+      <p className="text-sm font-semibold text-[var(--color-primario)] mb-3">{titulo}</p>
       <DataRow label="Monto" value={money(monto)} />
       {tipo && <DataRow label="Tipo" value={tipo} />}
       <DataRow label="Fecha" value={fmt(fecha)} />
@@ -65,6 +66,7 @@ export default function ReservaDetalle() {
   const { id } = useParams()
   const navigate = useNavigate()
   const location = useLocation()
+  const { complejoActivo } = useComplejo()
   const [reserva, setReserva] = useState(null)
   const [loading, setLoading] = useState(true)
   const [toast, setToast] = useState(location.state?.toast || '')
@@ -103,7 +105,7 @@ export default function ReservaDetalle() {
   return (
     <div className="max-w-3xl mx-auto fade-in">
       {toast && (
-        <div className="fixed top-4 right-4 z-50 bg-[#d2ab84] text-white px-5 py-3 rounded-[10px] text-sm font-semibold flex items-center gap-3">
+        <div className="fixed top-4 right-4 z-50 bg-[var(--color-primario)] text-white px-5 py-3 rounded-[10px] text-sm font-semibold flex items-center gap-3">
           <span>{toast}</span>
           <button onClick={() => setToast('')} className="text-white/70 hover:text-white font-bold text-lg leading-none">×</button>
         </div>
@@ -112,7 +114,7 @@ export default function ReservaDetalle() {
       {/* Header */}
       <div className="flex items-start justify-between mb-6">
         <div className="flex items-center gap-3">
-          <button onClick={() => navigate('/reservas')} className="text-[#888] hover:text-[#333] text-sm transition-colors">
+          <button onClick={() => navigate(`/${complejoActivo.slug}/reservas`)} className="text-[#888] hover:text-[#333] text-sm transition-colors">
             ← Volver
           </button>
           <div>
@@ -124,7 +126,7 @@ export default function ReservaDetalle() {
           </div>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => navigate(`/reservas/${id}/editar`)} className="btn-secondary">Editar</button>
+          <button onClick={() => navigate(`/${complejoActivo.slug}/reservas/${id}/editar`)} className="btn-secondary">Editar</button>
           {reserva.estado !== 'Finalizada' && reserva.estado !== 'Cancelada' && (
             <button onClick={handleFinalizar} className="btn-primary">Finalizar</button>
           )}
@@ -170,12 +172,12 @@ export default function ReservaDetalle() {
               <p className="font-bold text-[#111111]">{money(reserva.monto_total)}</p>
             </div>
             <div className="card-sm text-center">
-              <p className="section-label mb-1" style={{ color: '#d2ab84' }}>1ª Seña</p>
-              <p className="font-bold text-[#d2ab84]">{money(reserva.sena1_monto)}</p>
+              <p className="section-label mb-1" style={{ color: 'var(--color-primario)' }}>1ª Seña</p>
+              <p className="font-bold text-[var(--color-primario)]">{money(reserva.sena1_monto)}</p>
             </div>
             <div className="card-sm text-center">
-              <p className="section-label mb-1" style={{ color: '#d2ab84' }}>2ª Seña</p>
-              <p className="font-bold text-[#d2ab84]">{money(reserva.sena2_monto)}</p>
+              <p className="section-label mb-1" style={{ color: 'var(--color-primario)' }}>2ª Seña</p>
+              <p className="font-bold text-[var(--color-primario)]">{money(reserva.sena2_monto)}</p>
             </div>
             <div className={`card-sm text-center ${saldo > 0 ? 'bg-orange-50 border-orange-200' : 'bg-green-50 border-green-200'}`}>
               <p className={`section-label mb-1 ${saldo > 0 ? 'text-orange-600' : 'text-green-600'}`}>Saldo</p>

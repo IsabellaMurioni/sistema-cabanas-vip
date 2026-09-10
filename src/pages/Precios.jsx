@@ -2,6 +2,7 @@
 import { supabase } from '../lib/supabase'
 import { format, parseISO, isWithinInterval, startOfDay } from 'date-fns'
 import { es } from 'date-fns/locale'
+import { useComplejo } from '../context/ComplejoContext'
 
 const PAX_LIST = [2, 3, 4, 5, 6, 7]
 
@@ -42,6 +43,7 @@ function PaxIcon({ count }) {
 }
 
 export default function Precios() {
+  const { complejoActivo } = useComplejo()
   const [periodos, setPeriodos]     = useState([])
   const [loading, setLoading]       = useState(true)
   const [expanded, setExpanded]     = useState({})
@@ -55,15 +57,24 @@ export default function Precios() {
   const [editingNombre, setEditingNombre] = useState(null)
 
   const fetchAll = async () => {
+    if (!complejoActivo) {
+      setPeriodos([])
+      return
+    }
     setLoading(true)
     const { data: pds } = await supabase
       .from('periodos_precios')
       .select('*')
+      .eq('complejo_id', complejoActivo.id)
       .order('orden')
 
-    const { data: precios } = await supabase
-      .from('precios_pax')
-      .select('*')
+    const periodoIds = (pds || []).map((p) => p.id)
+    const { data: precios } = periodoIds.length > 0
+      ? await supabase
+          .from('precios_pax')
+          .select('*')
+          .in('periodo_id', periodoIds)
+      : { data: [] }
 
     const enriched = (pds || []).map((p) => ({
       ...p,
@@ -73,7 +84,7 @@ export default function Precios() {
     setLoading(false)
   }
 
-  useEffect(() => { fetchAll() }, [])
+  useEffect(() => { fetchAll() }, [complejoActivo?.id])
 
   const toggleExpand = (id) =>
     setExpanded((e) => ({ ...e, [id]: !e[id] }))
@@ -83,8 +94,13 @@ export default function Precios() {
     PAX_LIST.forEach((pax) => {
       const row = periodo.precios.find((r) => r.pax === pax) || {}
       map[pax] = {
-        noche:  String(row.precio_noche  ?? 0),
-        semana: String(row.precio_semana ?? 0),
+        noche:     String(row.precio_noche  ?? 0),
+        semana:    String(row.precio_semana ?? 0),
+        // Prioridad 3 — a diferencia de noche/semana, acá el string vacío
+        // NO es "0": es "todavía sin configurar", y hace que
+        // resolverPrecioReserva siga usando la fórmula vieja para
+        // estadías de una semana o más (ver saveEdit, más abajo).
+        adicional: row.precio_noche_adicional == null ? '' : String(row.precio_noche_adicional),
         rowId:  row.id,
       }
     })
@@ -112,18 +128,25 @@ export default function Precios() {
     setError('')
 
     const ops = PAX_LIST.map((pax) => {
-      const { noche, semana, rowId } = map[pax]
+      const { noche, semana, adicional, rowId } = map[pax]
+      // Prioridad 3: string vacío → null ("todavía sin configurar", cae a
+      // la fórmula vieja) — a propósito NO "|| 0" como noche/semana, para
+      // no activar sin querer la tarifa por tramos con un $0 de cargo por
+      // noche adicional apenas alguien guarda el período por otro motivo.
+      const precioNocheAdicional = adicional === '' || adicional == null ? null : (Number(adicional) || 0)
       if (rowId) {
         return supabase.from('precios_pax').update({
-          precio_noche:  Number(noche)  || 0,
-          precio_semana: Number(semana) || 0,
+          precio_noche:           Number(noche)  || 0,
+          precio_semana:          Number(semana) || 0,
+          precio_noche_adicional: precioNocheAdicional,
         }).eq('id', rowId)
       }
       return supabase.from('precios_pax').insert({
-        periodo_id:    periodo.id,
+        periodo_id:              periodo.id,
         pax,
-        precio_noche:  Number(noche)  || 0,
-        precio_semana: Number(semana) || 0,
+        precio_noche:            Number(noche)  || 0,
+        precio_semana:           Number(semana) || 0,
+        precio_noche_adicional:  precioNocheAdicional,
       })
     })
 
@@ -157,6 +180,10 @@ export default function Precios() {
       setError('Completá al menos el nombre y la fecha de inicio.')
       return
     }
+    if (!complejoActivo) {
+      alert('No se pudo determinar el complejo activo. Recargá la página e intentá de nuevo.')
+      return
+    }
     setSavingNew(true)
     setError('')
 
@@ -165,6 +192,7 @@ export default function Precios() {
     const { data: inserted, error: err } = await supabase
       .from('periodos_precios')
       .insert({
+        complejo_id:   complejoActivo.id,
         nombre:        newForm.nombre,
         fecha_inicio:  newForm.fecha_inicio,
         fecha_fin:     newForm.fecha_fin || null,
@@ -191,7 +219,7 @@ export default function Precios() {
 
   if (loading) return (
     <div className="flex items-center justify-center py-24">
-      <p className="text-[#d2ab84] text-lg font-medium">Cargando precios...</p>
+      <p className="text-[var(--color-primario)] text-lg font-medium">Cargando precios...</p>
     </div>
   )
 
@@ -282,9 +310,9 @@ export default function Precios() {
           return (
             <div
               key={periodo.id}
-              className="bg-[#fee7ef] rounded-[16px] border transition-all"
+              className="bg-[var(--color-secundario)] rounded-[16px] border transition-all"
               style={{
-                borderColor: activo ? '#d2ab84' : '#f0e6d8',
+                borderColor: activo ? 'var(--color-primario)' : '#f0e6d8',
                 borderLeftWidth: activo ? 4 : 1,
               }}
             >
@@ -321,7 +349,7 @@ export default function Precios() {
                       <span className="text-xs text-[#888]">
                         {fmtFecha(periodo.fecha_inicio)} → {fmtFecha(periodo.fecha_fin)}
                       </span>
-                      <span className="inline-flex items-center gap-1 bg-[#d2ab84] text-white text-[10px] font-semibold px-2 py-0.5 rounded-full">
+                      <span className="inline-flex items-center gap-1 bg-[var(--color-primario)] text-white text-[10px] font-semibold px-2 py-0.5 rounded-full">
                         mín. {periodo.minimo_noches} {periodo.minimo_noches === 1 ? 'noche' : 'noches'}
                       </span>
                     </div>
@@ -395,6 +423,7 @@ export default function Precios() {
                           <th className="text-left pb-2 section-label w-32">PAX</th>
                           <th className="text-right pb-2 section-label">Por noche</th>
                           <th className="text-right pb-2 section-label">Por semana</th>
+                          <th className="text-right pb-2 section-label">Noche adicional</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -437,8 +466,26 @@ export default function Precios() {
                                     placeholder="0"
                                   />
                                 ) : (
-                                  <span className={`font-semibold ${Number(row.precio_semana) > 0 ? 'text-[#d2ab84]' : 'text-[#ccc]'}`}>
+                                  <span className={`font-semibold ${Number(row.precio_semana) > 0 ? 'text-[var(--color-primario)]' : 'text-[#ccc]'}`}>
                                     {money(row.precio_semana)}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-3 text-right">
+                                {isEditing ? (
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    value={eRow?.adicional ?? ''}
+                                    onChange={(e) => handlePriceChange(periodo.id, pax, 'adicional', e.target.value)}
+                                    className="field w-32 text-right"
+                                    placeholder="Sin configurar"
+                                  />
+                                ) : row.precio_noche_adicional == null ? (
+                                  <span className="text-[#ccc] text-xs italic">Sin configurar</span>
+                                ) : (
+                                  <span className={`font-semibold ${Number(row.precio_noche_adicional) > 0 ? 'text-[#111111]' : 'text-[#ccc]'}`}>
+                                    {money(row.precio_noche_adicional)}
                                   </span>
                                 )}
                               </td>

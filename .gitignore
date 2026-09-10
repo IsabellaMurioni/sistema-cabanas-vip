@@ -24,3 +24,13 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Backups and local tooling
+backup_*.sql
+.claude/
+
+# Test tooling output
+playwright-report/
+test-results/
+coverage/
+tests/e2e/.auth/

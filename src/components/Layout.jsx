@@ -1,6 +1,7 @@
-import { useState } from 'react'
-import { NavLink, useNavigate } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { NavLink, useNavigate, useParams, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { useComplejo, navItemsVisibles } from '../context/ComplejoContext'
 
 function Icon({ d, size = 18 }) {
   return (
@@ -29,29 +30,70 @@ const I = {
     'M4 6h16M4 12h16M4 18h16',
   logout:
     'M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1',
+  chevronDown:
+    'M6 9l6 6 6-6',
+  lock:
+    'M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z',
 }
-
-const NAV = [
-  { to: '/reservas',       label: 'Reservas',       icon: 'reservas'  },
-  { to: '/disponibilidad', label: 'Disponibilidad', icon: 'calendar'  },
-  { to: '/caja',           label: 'Caja',           icon: 'wallet'    },
-  { to: '/ganancias',      label: 'Ganancias',      icon: 'chart'     },
-  { to: '/precios',        label: 'Precios',        icon: 'tag'       },
-]
 
 export default function Layout({ children }) {
   const { session, signOut } = useAuth()
+  const { todosLosComplejos, complejosConAcceso, complejoActivo, cambiarComplejo, cargando, rolActivo } = useComplejo()
   const navigate = useNavigate()
+  const { complejoSlug } = useParams()
+  const location = useLocation()
   const [open, setOpen] = useState(false)
+  const [complejoMenuOpen, setComplejoMenuOpen] = useState(false)
+  const complejoMenuRef = useRef(null)
+
+  // 'limitado_caja_silvia' no ve Ganancias ni Precios; 'limitado_reservas'
+  // tampoco ve Caja (ver SECCIONES_OCULTAS_POR_ROL en ComplejoContext.jsx) —
+  // mismo criterio que RequiereSeccion.jsx (guard real de esas rutas) y
+  // que el bloqueo de RLS en la base (021_membresias_rol.sql /
+  // 024_membresias_rol_limitado_reservas.sql): esto es sólo la capa de
+  // UX, la que de verdad importa es la de RLS.
+  const NAV = navItemsVisibles([
+    { to: `/${complejoSlug}/reservas`,       label: 'Reservas',       icon: 'reservas'  },
+    { to: `/${complejoSlug}/disponibilidad`, label: 'Disponibilidad', icon: 'calendar'  },
+    { to: `/${complejoSlug}/caja`,           label: 'Caja',           icon: 'wallet'    },
+    { to: `/${complejoSlug}/ganancias`,      label: 'Ganancias',      icon: 'chart'     },
+    { to: `/${complejoSlug}/precios`,        label: 'Precios',        icon: 'tag'       },
+  ], rolActivo)
 
   const email    = session?.user?.email || ''
   const userName = email.split('@')[0] || 'Usuario'
   const initial  = userName[0]?.toUpperCase() || 'U'
 
+  const sinComplejo       = cargando || !complejoActivo
+  const nombreComplejo    = sinComplejo ? 'Cabañas VIP' : complejoActivo.nombre
+  const ubicacionComplejo = sinComplejo ? 'Santa Clara del Mar' : complejoActivo.ubicacion
+
   const handleSignOut = async () => {
     await signOut()
     navigate('/login')
   }
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (complejoMenuRef.current && !complejoMenuRef.current.contains(e.target)) {
+        setComplejoMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  useEffect(() => {
+    if (cargando || !complejoSlug) return
+    if (complejoActivo?.slug === complejoSlug) return
+    const match = todosLosComplejos.find((c) => c.slug === complejoSlug)
+    const primerComplejo = todosLosComplejos.find((c) => complejosConAcceso.includes(c.id))
+    if (!match || !complejosConAcceso.includes(match.id)) {
+      if (primerComplejo) navigate(`/${primerComplejo.slug}/reservas`, { replace: true })
+      return
+    }
+    cambiarComplejo(match.id)
+  }, [complejoSlug, cargando, todosLosComplejos, complejosConAcceso, complejoActivo])
 
   return (
     <div className="min-h-screen bg-white flex">
@@ -66,22 +108,80 @@ export default function Layout({ children }) {
 
       {/* ── SIDEBAR ───────────────────────────────────────── */}
       <aside
-        style={{ backgroundColor: '#d2ab84', transition: 'transform 0.3s ease' }}
+        style={{ backgroundColor: 'var(--color-primario)', transition: 'transform 0.3s ease' }}
         className={[
           'fixed top-0 left-0 h-full w-60 flex flex-col z-30',
           open ? 'translate-x-0' : '-translate-x-full md:translate-x-0',
         ].join(' ')}
       >
         {/* Logo */}
-        <div className="flex items-center gap-3 px-5 py-6" style={{ borderBottom: '1px solid rgba(255,255,255,0.2)' }}>
+        <div
+          className="relative flex items-center gap-3 px-5 py-6"
+          style={{ borderBottom: '1px solid rgba(255,255,255,0.2)' }}
+          ref={complejoMenuRef}
+        >
           <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">
             <span className="text-white"><Icon d={I.cabin} size={17} /></span>
           </div>
-          <div>
-            <p className="text-white font-bold text-[17px] leading-tight tracking-tight">
-              Cabañas VIP
-            </p>
-            <p className="text-white/60 text-[11px] leading-tight mt-0.5">Santa Clara del Mar</p>
+          <div className="min-w-0 flex-1">
+            <button
+              type="button"
+              data-testid="complejo-switcher-toggle"
+              onClick={() => setComplejoMenuOpen((v) => !v)}
+              className="flex items-center gap-2 w-full min-w-0 select-none text-left"
+            >
+              <span className="min-w-0 flex-1">
+                <p data-testid="complejo-activo-nombre" className="text-white font-bold text-[17px] leading-tight tracking-tight truncate">
+                  {nombreComplejo}
+                </p>
+                <p className="text-white/60 text-[11px] leading-tight mt-0.5 truncate">{ubicacionComplejo}</p>
+              </span>
+              <span
+                className="text-white/70 flex-shrink-0 transition-transform duration-150"
+                style={{ transform: complejoMenuOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}
+              >
+                <Icon d={I.chevronDown} size={14} />
+              </span>
+            </button>
+
+            {complejoMenuOpen && (
+              <div className="absolute left-5 right-5 top-full mt-2 bg-white rounded-xl shadow-lg border border-black/5 py-2 z-40">
+                {todosLosComplejos.map((complejo) => {
+                  const tieneAcceso = complejosConAcceso.includes(complejo.id)
+                  const esActivo = complejoActivo?.id === complejo.id
+                  return (
+                    <button
+                      key={complejo.id}
+                      type="button"
+                      data-testid={`complejo-option-${complejo.slug}`}
+                      disabled={!tieneAcceso}
+                      onClick={() => {
+                        if (!tieneAcceso) return
+                        cambiarComplejo(complejo.id)
+                        const resto = location.pathname.split('/').slice(2).join('/')
+                        navigate(`/${complejo.slug}/${resto || 'reservas'}`)
+                        setComplejoMenuOpen(false)
+                      }}
+                      className={[
+                        'w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-[10px] text-sm font-medium transition-colors duration-150',
+                        tieneAcceso
+                          ? esActivo
+                            ? 'text-[#111111] bg-[#f5ede0]'
+                            : 'text-[#111111] hover:bg-[#f5ede0] cursor-pointer'
+                          : 'text-gray-300 cursor-not-allowed',
+                      ].join(' ')}
+                    >
+                      <span className="truncate">{complejo.nombre}</span>
+                      {!tieneAcceso && (
+                        <span className="text-gray-300 flex-shrink-0">
+                          <Icon d={I.lock} size={13} />
+                        </span>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
           </div>
         </div>
 
@@ -96,7 +196,7 @@ export default function Layout({ children }) {
                 'flex items-center gap-3 px-3 py-2.5 rounded-[10px] text-sm font-medium',
                 'transition-all duration-150 select-none',
                 isActive
-                  ? 'bg-white text-[#d2ab84]'
+                  ? 'bg-white text-[var(--color-primario)]'
                   : 'text-white hover:bg-white/20',
               ].join(' ')}
             >
@@ -146,7 +246,7 @@ export default function Layout({ children }) {
 
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold flex-shrink-0"
-                 style={{ backgroundColor: '#d2ab84' }}>
+                 style={{ backgroundColor: 'var(--color-primario)' }}>
               {initial}
             </div>
             <div className="hidden sm:block">
@@ -158,7 +258,13 @@ export default function Layout({ children }) {
 
         {/* Page content */}
         <main className="flex-1 p-5 md:p-7 min-w-0 bg-white">
-          {children}
+          {cargando || !complejoActivo ? (
+            <div className="flex items-center justify-center h-full text-[#888] text-sm">
+              Cargando...
+            </div>
+          ) : (
+            children
+          )}
         </main>
       </div>
     </div>

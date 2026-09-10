@@ -3,6 +3,17 @@ import { supabase } from '../lib/supabase'
 import FileUpload, { getPublicUrl } from '../components/FileUpload'
 import { format, parseISO, getMonth, getYear } from 'date-fns'
 import { es } from 'date-fns/locale'
+import { useComplejo } from '../context/ComplejoContext'
+import CajaTemporada from './CajaTemporada'
+
+// Este archivo exporta MONTO_MINIMO_VIP/cumpleMontoMinimoVip además del
+// componente default, para que los tests unitarios (tests/unit/)
+// puedan importar y ejercitar la regla real en vez de reimplementarla.
+// Eso rompe el supuesto de Fast Refresh de "un archivo de componente
+// sólo exporta componentes" — sin impacto en runtime/producción, sólo
+// hace que Vite recargue toda la página en vez de hacer hot-swap al
+// editar este archivo en desarrollo.
+/* eslint-disable react-refresh/only-export-components */
 
 // --- Constants ---------------------------------------------
 
@@ -45,6 +56,22 @@ const AMOUNT_CL = {
 const ic = 'field'
 const sc = 'field w-auto'
 
+// Cabañas VIP no tiene un chequeo JS imperativo para "el monto tiene
+// que ser > $0" en sus 3 forms de monto único (SilviaCaja/JuliCaja/
+// CajaTransfer, más abajo) — a diferencia de CajaTemporada (que suma 3
+// campos y sí necesita un predicado propio), acá la regla la aplica
+// enteramente la constraint nativa min="0.01" del navegador en el
+// input; no hay ningún "if" en el código que mover a una función sin
+// cambiar comportamiento. Lo que sí estaba repetido 3 veces era el
+// valor mágico "0.01" — se extrae acá como fuente única, y se expone
+// la regla equivalente como función pura para poder testearla, sin
+// agregar ningún bloqueo JS nuevo al submit (que sí cambiaría el
+// comportamiento actual).
+export const MONTO_MINIMO_VIP = 0.01
+export function cumpleMontoMinimoVip(monto) {
+  return Number(monto) >= MONTO_MINIMO_VIP
+}
+
 // --- UI atoms ----------------------------------------------
 
 function BigTotals({ items }) {
@@ -65,7 +92,7 @@ function StatCards({ items }) {
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-5">
       {items.map((item, i) => (
-        <div key={i} className="bg-[#fee7ef] border border-[#f0e6d8] rounded-[12px] px-4 py-4">
+        <div key={i} className="bg-[var(--color-secundario)] border border-[#f0e6d8] rounded-[12px] px-4 py-4">
           <p className="section-label mb-2">{item.label}</p>
           <p className={`text-base font-semibold tabular-nums ${colorText[item.color] || colorText.neutral}`}>
             {item.value}
@@ -168,7 +195,7 @@ function ToggleGroup({ options, value, onChange }) {
           className={`py-2 rounded-[10px] text-sm font-semibold transition-all ${
             value === o.v
               ? o.active
-              : 'bg-[#fee7ef] border border-[#f0e6d8] text-[#555]'
+              : 'bg-[var(--color-secundario)] border border-[#f0e6d8] text-[#555]'
           }`}>
           {o.l}
         </button>
@@ -215,6 +242,7 @@ const EMPTY_S = {
 }
 
 function SilviaCaja({ reservas }) {
+  const { complejoActivo } = useComplejo()
   const [rows, setRows]       = useState([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal]     = useState(false)
@@ -225,15 +253,20 @@ function SilviaCaja({ reservas }) {
   const [tipo, setTipo]       = useState('todos')
 
   const load = async () => {
+    if (!complejoActivo) {
+      setRows([])
+      return
+    }
     setLoading(true)
     const { data } = await supabase
       .from('caja_silvia').select('*')
+      .eq('complejo_id', complejoActivo.id)
       .order('fecha', { ascending: true })
       .order('created_at', { ascending: true })
     setRows(data || [])
     setLoading(false)
   }
-  useEffect(() => { load() }, [])
+  useEffect(() => { load() }, [complejoActivo?.id])
 
   const withTotals = useMemo(() => {
     let ps = 0
@@ -287,14 +320,20 @@ function SilviaCaja({ reservas }) {
   const closeModal = () => { setModal(false); setForm(EMPTY_S) }
 
   const submit = async e => {
-    e.preventDefault(); setSaving(true)
+    e.preventDefault()
+    if (!complejoActivo) {
+      alert('No se pudo determinar el complejo activo. Recargá la página e intentá de nuevo.')
+      return
+    }
     const m = num(form.monto)
+    setSaving(true)
     const isIngAlquiler = form.tipo === 'ingreso' && form.sub_tipo === 'alquiler'
     const isIngJuli     = form.tipo === 'ingreso' && form.sub_tipo === 'juli'
     const isGasto       = form.tipo === 'egreso'  && form.sub_tipo === 'gasto'
     const isRetiro      = form.tipo === 'egreso'  && form.sub_tipo === 'retiro'
 
     await supabase.from('caja_silvia').insert({
+      complejo_id:     complejoActivo.id,
       fecha:           form.fecha,
       cuenta:          isIngAlquiler ? 'Alquiler'
                      : isIngJuli    ? 'Ingreso por Juli'
@@ -374,7 +413,7 @@ function SilviaCaja({ reservas }) {
                   const t  = getTipoSilvia(r)
                   const ac = AMOUNT_CL[t] || ''
                   return (
-                    <tr key={r.id} className={`border-b border-[#f0e6d8] ${i % 2 === 0 ? 'bg-white' : 'bg-[#fee7ef]'} hover:bg-[#fff4e8] transition-colors`}
+                    <tr key={r.id} className={`border-b border-[#f0e6d8] ${i % 2 === 0 ? 'bg-white' : 'bg-[var(--color-secundario)]'} hover:bg-[var(--color-fila-hover)] transition-colors`}
                         style={{ boxShadow: undefined }}>
                       <Td>{fmtD(r.fecha)}</Td>
                       <Td cls="text-[#888]">{r.cuenta || '—'}</Td>
@@ -384,10 +423,10 @@ function SilviaCaja({ reservas }) {
                       <Td right cls={t === 'ingreso_juli'     ? ac : 'text-[#ddd]'}>{num(r.ingreso_juli)  > 0 ? pesos(r.ingreso_juli)  : ''}</Td>
                       <Td right cls={t === 'gasto'            ? ac : 'text-[#ddd]'}>{num(r.gasto)         > 0 ? pesos(r.gasto)         : ''}</Td>
                       <Td right cls={t === 'retiro'           ? ac : 'text-[#ddd]'}>{num(r.retiro_pesos)  > 0 ? pesos(r.retiro_pesos)  : ''}</Td>
-                      <Td right cls="font-semibold text-[#111] bg-[#fee7ef] border-l border-[#f0e6d8]">{pesos(r._ps)}</Td>
+                      <Td right cls="font-semibold text-[#111] bg-[var(--color-secundario)] border-l border-[#f0e6d8]">{pesos(r._ps)}</Td>
                       <Td cls="text-center">
                         {r.comprobante
-                          ? <a href={getPublicUrl(r.comprobante)} target="_blank" rel="noopener noreferrer" className="text-[#d2ab84] hover:underline text-xs font-medium">Ver</a>
+                          ? <a href={getPublicUrl(r.comprobante)} target="_blank" rel="noopener noreferrer" className="text-[var(--color-primario)] hover:underline text-xs font-medium">Ver</a>
                           : <span className="text-[#ddd] text-xs">—</span>}
                       </Td>
                       <Td>
@@ -423,8 +462,8 @@ function SilviaCaja({ reservas }) {
                   value={form.sub_tipo}
                   onChange={v => setForm(f => ({ ...f, sub_tipo: v, _reservaId: '', detalle: '', monto: '' }))}
                   options={[
-                    { v: 'alquiler', l: 'Alquiler', active: 'bg-[#d2ab84] text-white' },
-                    { v: 'juli',     l: 'Por Juli',  active: 'bg-[#d2ab84] text-white' },
+                    { v: 'alquiler', l: 'Alquiler', active: 'bg-[var(--color-primario)] text-white' },
+                    { v: 'juli',     l: 'Por Juli',  active: 'bg-[var(--color-primario)] text-white' },
                   ]}
                 />
               </div>
@@ -472,7 +511,7 @@ function SilviaCaja({ reservas }) {
               </div>
               <div>
                 <Label required>Monto ($)</Label>
-                <input type="number" min={0} step="0.01" value={form.monto} onChange={e => set('monto', e.target.value)} required className={ic} placeholder="0" />
+                <input type="number" min={MONTO_MINIMO_VIP} step="0.01" value={form.monto} onChange={e => set('monto', e.target.value)} required className={ic} placeholder="0" />
               </div>
               <div>
                 <Label>Detalle / Nº Operación</Label>
@@ -503,6 +542,7 @@ const EMPTY_J = {
 }
 
 function JuliCaja() {
+  const { complejoActivo } = useComplejo()
   const [rows, setRows]       = useState([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal]     = useState(false)
@@ -513,13 +553,18 @@ function JuliCaja() {
   const [vista, setVista]     = useState('main')
 
   const load = async () => {
+    if (!complejoActivo) {
+      setRows([])
+      return
+    }
     setLoading(true)
     const { data } = await supabase.from('caja_juli').select('*')
+      .eq('complejo_id', complejoActivo.id)
       .order('fecha', { ascending: true }).order('created_at', { ascending: true })
     setRows(data || [])
     setLoading(false)
   }
-  useEffect(() => { load() }, [])
+  useEffect(() => { load() }, [complejoActivo?.id])
 
   const withTotals = useMemo(() => {
     let total = 0
@@ -560,8 +605,14 @@ function JuliCaja() {
   const closeModal = () => { setModal(false); setForm(EMPTY_J) }
 
   const submit = async e => {
-    e.preventDefault(); setSaving(true)
+    e.preventDefault()
+    if (!complejoActivo) {
+      alert('No se pudo determinar el complejo activo. Recargá la página e intentá de nuevo.')
+      return
+    }
+    setSaving(true)
     await supabase.from('caja_juli').insert({
+      complejo_id: complejoActivo.id,
       seccion: form.seccion, tipo_main: form.seccion === 'main' ? form.tipo_main : null,
       fecha: form.fecha, detalle: form.detalle || null, recibo: form.recibo || null,
       importe: num(form.importe),
@@ -595,7 +646,7 @@ function JuliCaja() {
         {[{ value: 'main', label: 'Caja Juli' }, { value: 'gastos', label: 'Gastos efectivo / MP' }].map(v => (
           <button key={v.value} onClick={() => setVista(v.value)}
             className={`px-4 py-2.5 text-sm font-semibold border-b-2 -mb-px transition-all ${
-              vista === v.value ? 'border-[#d2ab84] text-[#111]' : 'border-transparent text-[#888] hover:text-[#333]'
+              vista === v.value ? 'border-[var(--color-primario)] text-[#111]' : 'border-transparent text-[#888] hover:text-[#333]'
             }`}
           >
             {v.label}
@@ -629,15 +680,15 @@ function JuliCaja() {
                   {filtered.map((r, i) => {
                     const esIng = r.tipo_main === 'ingreso'
                     return (
-                      <tr key={r.id} className={`border-b border-[#f0e6d8] ${i % 2 === 0 ? 'bg-white' : 'bg-[#fee7ef]'} hover:bg-[#fff4e8]`}>
+                      <tr key={r.id} className={`border-b border-[#f0e6d8] ${i % 2 === 0 ? 'bg-white' : 'bg-[var(--color-secundario)]'} hover:bg-[var(--color-fila-hover)]`}>
                         <Td>{fmtD(r.fecha)}</Td>
                         <Td cls="max-w-[180px] truncate text-[#333]" title={r.detalle}>{r.detalle || '—'}</Td>
                         <Td cls="text-[#888]">{r.recibo || '—'}</Td>
                         <Td right cls={esIng ? 'text-green-700 font-semibold' : 'text-[#ddd]'}>{esIng ? pesos(r.importe) : ''}</Td>
                         <Td right cls={!esIng ? 'text-red-600 font-semibold' : 'text-[#ddd]'}>{!esIng ? pesos(r.importe) : ''}</Td>
-                        <Td right cls="font-semibold text-[#111] bg-[#fee7ef] border-l border-[#f0e6d8]">{pesos(r._total)}</Td>
+                        <Td right cls="font-semibold text-[#111] bg-[var(--color-secundario)] border-l border-[#f0e6d8]">{pesos(r._total)}</Td>
                         <Td cls="text-center">
-                          {r.comprobante ? <a href={getPublicUrl(r.comprobante)} target="_blank" rel="noopener noreferrer" className="text-[#d2ab84] hover:underline text-xs font-medium">Ver</a> : <span className="text-[#ddd] text-xs">—</span>}
+                          {r.comprobante ? <a href={getPublicUrl(r.comprobante)} target="_blank" rel="noopener noreferrer" className="text-[var(--color-primario)] hover:underline text-xs font-medium">Ver</a> : <span className="text-[#ddd] text-xs">—</span>}
                         </Td>
                         <Td><button onClick={() => del(r.id)} className="text-[#ccc] hover:text-red-500 text-xs">✕</button></Td>
                       </tr>
@@ -672,16 +723,16 @@ function JuliCaja() {
                 </thead>
                 <tbody>
                   {filtered.map((r, i) => (
-                    <tr key={r.id} className={`border-b border-[#f0e6d8] ${i % 2 === 0 ? 'bg-white' : 'bg-[#fee7ef]'} hover:bg-[#fff4e8]`}>
+                    <tr key={r.id} className={`border-b border-[#f0e6d8] ${i % 2 === 0 ? 'bg-white' : 'bg-[var(--color-secundario)]'} hover:bg-[var(--color-fila-hover)]`}>
                       <Td>{fmtD(r.fecha)}</Td>
                       <Td cls="max-w-[140px] truncate text-[#333]" title={r.detalle}>{r.detalle || '—'}</Td>
                       <Td cls="text-[#888]">{r.recibo || '—'}</Td>
                       <Td right cls={num(r.transferencia_silvia) > 0 ? 'text-orange-600 font-semibold' : 'text-[#ddd]'}>{num(r.transferencia_silvia) > 0 ? pesos(r.transferencia_silvia) : ''}</Td>
                       <Td right cls="text-red-600 font-semibold">{pesos(r.importe)}</Td>
                       <Td right cls={num(r.devolucion) > 0 ? 'text-green-700 font-semibold' : 'text-[#ddd]'}>{num(r.devolucion) > 0 ? pesos(r.devolucion) : ''}</Td>
-                      <Td right cls="font-semibold text-[#111] bg-[#fee7ef] border-l border-[#f0e6d8]">{pesos(r._total)}</Td>
+                      <Td right cls="font-semibold text-[#111] bg-[var(--color-secundario)] border-l border-[#f0e6d8]">{pesos(r._total)}</Td>
                       <Td>
-                        <span className={`inline-flex px-2 py-0.5 rounded-[8px] text-xs font-medium ${r.modalidad_pago === 'Mercado Pago' ? 'bg-indigo-50 text-indigo-700' : 'bg-[#fee7ef] text-[#555]'}`}>
+                        <span className={`inline-flex px-2 py-0.5 rounded-[8px] text-xs font-medium ${r.modalidad_pago === 'Mercado Pago' ? 'bg-indigo-50 text-indigo-700' : 'bg-[var(--color-secundario)] text-[#555]'}`}>
                           {r.modalidad_pago || '—'}
                         </span>
                       </Td>
@@ -691,7 +742,7 @@ function JuliCaja() {
                         </span>
                       </Td>
                       <Td cls="text-center">
-                        {r.comprobante ? <a href={getPublicUrl(r.comprobante)} target="_blank" rel="noopener noreferrer" className="text-[#d2ab84] hover:underline text-xs font-medium">Ver</a> : <span className="text-[#ddd] text-xs">—</span>}
+                        {r.comprobante ? <a href={getPublicUrl(r.comprobante)} target="_blank" rel="noopener noreferrer" className="text-[var(--color-primario)] hover:underline text-xs font-medium">Ver</a> : <span className="text-[#ddd] text-xs">—</span>}
                       </Td>
                       <Td><button onClick={() => del(r.id)} className="text-[#ccc] hover:text-red-500 text-xs">✕</button></Td>
                     </tr>
@@ -728,7 +779,7 @@ function JuliCaja() {
               </div>
               <div>
                 <Label required>Importe ($)</Label>
-                <input type="number" min={0} step="0.01" value={form.importe} onChange={e => set('importe', e.target.value)} required className={ic} placeholder="0" />
+                <input type="number" min={MONTO_MINIMO_VIP} step="0.01" value={form.importe} onChange={e => set('importe', e.target.value)} required className={ic} placeholder="0" />
               </div>
               <div>
                 {(form.seccion === 'gastos' || (form.seccion === 'main' && form.tipo_main === 'egreso')) ? (
@@ -801,6 +852,7 @@ const emptyTransfer = () => ({
 })
 
 function CajaTransfer({ tabla, titulo, reservas }) {
+  const { complejoActivo } = useComplejo()
   const [rows, setRows]       = useState([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal]     = useState(false)
@@ -810,14 +862,19 @@ function CajaTransfer({ tabla, titulo, reservas }) {
   const [anio, setAnio]       = useState(NOW_YEAR)
 
   const load = async () => {
+    if (!complejoActivo) {
+      setRows([])
+      return
+    }
     setLoading(true)
     const { data } = await supabase.from(tabla).select('*')
+      .eq('complejo_id', complejoActivo.id)
       .order('fecha', { ascending: true })
       .order('created_at', { ascending: true })
     setRows(data || [])
     setLoading(false)
   }
-  useEffect(() => { load() }, [tabla])
+  useEffect(() => { load() }, [tabla, complejoActivo?.id])
 
   const withTotals = useMemo(() => {
     let total = 0
@@ -864,8 +921,14 @@ function CajaTransfer({ tabla, titulo, reservas }) {
   const closeModal = () => { setModal(false); setForm(emptyTransfer()) }
 
   const submit = async e => {
-    e.preventDefault(); setSaving(true)
+    e.preventDefault()
+    if (!complejoActivo) {
+      alert('No se pudo determinar el complejo activo. Recargá la página e intentá de nuevo.')
+      return
+    }
+    setSaving(true)
     await supabase.from(tabla).insert({
+      complejo_id:    complejoActivo.id,
       fecha:          form.fecha,
       detalle:        form.detalle        || null,
       reserva_codigo: form.reserva_codigo || null,
@@ -924,16 +987,16 @@ function CajaTransfer({ tabla, titulo, reservas }) {
               </thead>
               <tbody>
                 {filtered.map((r, i) => (
-                  <tr key={r.id} className={`border-b border-[#f0e6d8] ${i % 2 === 0 ? 'bg-white' : 'bg-[#fee7ef]'} hover:bg-[#fff4e8]`}>
+                  <tr key={r.id} className={`border-b border-[#f0e6d8] ${i % 2 === 0 ? 'bg-white' : 'bg-[var(--color-secundario)]'} hover:bg-[var(--color-fila-hover)]`}>
                     <Td>{fmtD(r.fecha)}</Td>
                     <Td cls="max-w-[200px] truncate text-[#333]" title={r.detalle}>{r.detalle || '—'}</Td>
                     <Td cls="text-[#888] font-mono text-xs">{r.reserva_codigo || '—'}</Td>
                     <Td right cls={num(r.ingreso) > 0 ? 'text-green-700 font-semibold' : 'text-[#ddd]'}>{num(r.ingreso) > 0 ? pesos(r.ingreso) : ''}</Td>
                     <Td right cls={num(r.egreso)  > 0 ? 'text-red-600  font-semibold' : 'text-[#ddd]'}>{num(r.egreso)  > 0 ? pesos(r.egreso)  : ''}</Td>
-                    <Td right cls="font-semibold text-[#111] bg-[#fee7ef] border-l border-[#f0e6d8]">{pesos(r._total)}</Td>
+                    <Td right cls="font-semibold text-[#111] bg-[var(--color-secundario)] border-l border-[#f0e6d8]">{pesos(r._total)}</Td>
                     <Td cls="text-center">
                       {r.comprobante
-                        ? <a href={getPublicUrl(r.comprobante)} target="_blank" rel="noopener noreferrer" className="text-[#d2ab84] hover:underline text-xs font-medium">Ver</a>
+                        ? <a href={getPublicUrl(r.comprobante)} target="_blank" rel="noopener noreferrer" className="text-[var(--color-primario)] hover:underline text-xs font-medium">Ver</a>
                         : <span className="text-[#ddd] text-xs">—</span>}
                     </Td>
                     <Td cls="text-center">
@@ -941,7 +1004,7 @@ function CajaTransfer({ tabla, titulo, reservas }) {
                         type="checkbox"
                         checked={!!r.chequeado}
                         onChange={() => toggleChequeado(r.id, r.chequeado)}
-                        className="w-4 h-4 rounded accent-[#d2ab84] cursor-pointer"
+                        className="w-4 h-4 rounded accent-[var(--color-primario)] cursor-pointer"
                         title={r.chequeado ? 'Chequeado' : 'Sin chequear'}
                       />
                     </Td>
@@ -987,7 +1050,7 @@ function CajaTransfer({ tabla, titulo, reservas }) {
               </div>
               <div>
                 <Label required>Monto ($)</Label>
-                <input type="number" min={0} step="0.01" value={form.monto} onChange={e => set('monto', e.target.value)} required className={ic} placeholder="0" />
+                <input type="number" min={MONTO_MINIMO_VIP} step="0.01" value={form.monto} onChange={e => set('monto', e.target.value)} required className={ic} placeholder="0" />
               </div>
             </div>
 
@@ -1014,18 +1077,61 @@ const TABS = [
   { v: 'mp',     l: 'Mercado Pago'},
 ]
 
+// Fase 6 — rol='limitado_caja_silvia' sólo ve la vista Caja Silvia, ni
+// siquiera el selector de pestañas para las otras 3 (Juli/Banco/MP
+// están bloqueadas también a nivel de RLS, ver 021_membresias_rol.sql
+// — esto es la capa de UX encima de eso, no un reemplazo). rol=
+// 'limitado_reservas' no debería poder llegar nunca a este componente
+// (RequiereSeccion.jsx bloquea la ruta /caja entera para ese rol) — el
+// caso 0 pestañas de acá es sólo defensa en profundidad, para que esta
+// función nunca devuelva "todo visible" si algún día algo la llama sin
+// pasar por ese guard.
+export function tabsCajaVipVisibles(rol) {
+  if (rol === 'limitado_caja_silvia') return TABS.filter((t) => t.v === 'silvia')
+  if (rol === 'limitado_reservas') return []
+  return TABS
+}
+
 export default function Caja() {
+  const { complejoActivo } = useComplejo()
+
+  // Cabañas VIP sigue con su Caja de siempre (Silvia/Juli/Banco/MP), sin
+  // ningún cambio. Cualquier otro complejo usa la nueva Caja "temporada".
+  // Se resuelve como un componente distinto (no un return temprano dentro
+  // de esta misma función) porque CajaVIP declara sus propios hooks
+  // (useState/useEffect) — mezclar eso con un return condicional en el
+  // mismo cuerpo de función violaría las Rules of Hooks apenas el usuario
+  // cambie de complejo activo sin recargar la página.
+  if (complejoActivo?.slug && complejoActivo.slug !== 'cabanas-vip') {
+    return <CajaTemporada />
+  }
+  return <CajaVIP />
+}
+
+function CajaVIP() {
+  const { complejoActivo, rolActivo } = useComplejo()
   const [tab, setTab]           = useState('silvia')
   const [reservas, setReservas] = useState([])
+  // rol='limitado_caja_silvia': ni el switcher de pestañas se muestra
+  // (nada a lo que cambiar — tabsCajaVipVisibles ya sólo devuelve
+  // 'silvia'), y `tab` nunca deja de ser su default 'silvia' porque no
+  // hay ningún botón que lo cambie.
+  const tabsVisibles = tabsCajaVipVisibles(rolActivo)
+  const soloSilvia = tabsVisibles.length === 1
 
   useEffect(() => {
+    if (!complejoActivo) {
+      setReservas([])
+      return
+    }
     supabase
       .from('reservas')
       .select('id, codigo, nombre_apellido, monto_total, sena1_monto, sena2_monto, pago_cabana_monto, estado')
+      .eq('complejo_id', complejoActivo.id)
       .neq('estado', 'Cancelada')
       .order('codigo', { ascending: false })
       .then(({ data }) => setReservas(data || []))
-  }, [])
+  }, [complejoActivo?.id])
 
   return (
     <div className="fade-in">
@@ -1035,21 +1141,23 @@ export default function Caja() {
             <h2 className="text-[28px] font-bold text-[#111111]">Caja</h2>
             <p className="text-sm text-[#888] mt-0.5">Registro de movimientos y totales</p>
           </div>
-          <div className="flex flex-wrap">
-            {TABS.map(t => (
-              <button
-                key={t.v}
-                onClick={() => setTab(t.v)}
-                className={`px-6 py-3 text-sm font-semibold border-b-2 -mb-px transition-all ${
-                  tab === t.v
-                    ? 'border-[#d2ab84] text-[#111111]'
-                    : 'border-transparent text-[#888] hover:text-[#333] hover:border-[#f0e6d8]'
-                }`}
-              >
-                {t.l}
-              </button>
-            ))}
-          </div>
+          {!soloSilvia && (
+            <div className="flex flex-wrap">
+              {tabsVisibles.map(t => (
+                <button
+                  key={t.v}
+                  onClick={() => setTab(t.v)}
+                  className={`px-6 py-3 text-sm font-semibold border-b-2 -mb-px transition-all ${
+                    tab === t.v
+                      ? 'border-[var(--color-primario)] text-[#111111]'
+                      : 'border-transparent text-[#888] hover:text-[#333] hover:border-[#f0e6d8]'
+                  }`}
+                >
+                  {t.l}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 

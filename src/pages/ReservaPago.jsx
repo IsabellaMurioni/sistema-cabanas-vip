@@ -1,8 +1,11 @@
-﻿import { useEffect, useState } from 'react'
+﻿import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import FileUpload from '../components/FileUpload'
 import { sendEmailRecibo } from '../lib/email'
+import { useComplejo } from '../context/ComplejoContext'
+import { fechaEstaCerrada, labelCierre } from '../lib/cierres'
+import { totalPagadoReserva, excedeSaldoReserva } from '../lib/pagosReserva'
 
 const TIPOS_PAGO = [
   'Transferencia bancaria',
@@ -16,6 +19,15 @@ function getCajaTable(tipo) {
   if (tipo === 'Efectivo en cabaña' ||
       tipo === 'Efectivo en oficina')   return 'caja_silvia'
   return 'caja_banco'
+}
+
+// Complejos NO-VIP: mismo mapeo de método de pago, pero a las 3 columnas
+// de movimientos_caja en vez de a una tabla distinta.
+function movimientoCajaBucket(tipo) {
+  if (tipo === 'Mercado Pago') return 'monto_otros'
+  if (tipo === 'Efectivo en cabaña' ||
+      tipo === 'Efectivo en oficina') return 'monto_efectivo'
+  return 'monto_depositos'
 }
 
 const ic = 'field'
@@ -32,11 +44,13 @@ function Field({ label, children }) {
 export default function ReservaPago() {
   const { id }   = useParams()
   const navigate = useNavigate()
+  const { complejoActivo } = useComplejo()
 
   const [reserva, setReserva] = useState(null)
   const [loading, setLoading] = useState(true)
   const [saving,  setSaving]  = useState(false)
   const [error,   setError]   = useState('')
+  const montoRef = useRef(null)
 
   const [form, setForm] = useState({
     monto:          '',
@@ -53,13 +67,40 @@ export default function ReservaPago() {
     })
   }, [id])
 
-  const set = (field, value) => setForm(f => ({ ...f, [field]: value }))
+  const set = (field, value) => {
+    setForm(f => ({ ...f, [field]: value }))
+    if (field === 'monto') montoRef.current?.setCustomValidity('')
+  }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!form.monto || Number(form.monto) <= 0) {
       setError('Ingresá un monto válido.')
       return
+    }
+
+    // El pago nuevo, sumado a lo ya pagado en esta reserva (señas + pago en
+    // cabaña ya registrados, sea por acá o por ReservaForm), nunca puede
+    // superar el precio total de la reserva — aplica a todos los complejos.
+    montoRef.current?.setCustomValidity('')
+    const totalPrecio = Number(reserva.monto_total || 0)
+    if (excedeSaldoReserva(totalPrecio, pagado + Number(form.monto))) {
+      montoRef.current?.setCustomValidity(`El pago no puede superar el saldo pendiente ($${saldo.toLocaleString('es-AR')})`)
+      montoRef.current?.reportValidity()
+      return
+    }
+
+    // Complejos NO-VIP: si la fecha de este pago cae en un rango ya
+    // cerrado (Cerrar caja), no se guarda nada — ni el pago en la
+    // reserva ni en la caja — para no dejar la reserva actualizada con
+    // un pago que en realidad no llegó a registrarse en la caja.
+    if (complejoActivo && complejoActivo.slug !== 'cabanas-vip') {
+      const fechaPago = form.fecha || new Date().toISOString().slice(0, 10)
+      const { cierre } = await fechaEstaCerrada(supabase, complejoActivo.id, fechaPago)
+      if (cierre) {
+        setError(`Esta fecha está dentro de un período ya cerrado (${labelCierre(cierre)}). Para cargar un pago ahí, primero borrá ese cierre.`)
+        return
+      }
     }
 
     setSaving(true)
@@ -105,30 +146,57 @@ export default function ReservaPago() {
     }
 
     // Registrar en caja
-    const tabla = getCajaTable(form.tipo)
+    if (!complejoActivo) {
+      alert('No se pudo determinar el complejo activo. Recargá la página e intentá de nuevo.')
+      setSaving(false)
+      return
+    }
     const hoy   = new Date().toISOString().slice(0, 10)
-    const detalle = `${titulo} · ${reserva.codigo} - ${reserva.nombre_apellido}`
 
-    if (tabla === 'caja_silvia') {
-      await supabase.from('caja_silvia').insert({
-        fecha:           form.fecha || hoy,
-        cuenta:          'Alquiler',
-        detalle,
-        ingreso_pesos:   Number(form.monto),
-        ingreso_dolares: 0,
-        ingreso_juli:    0,
-        gasto:           0,
-        retiro_pesos:    0,
-        retiro_dolares:  0,
-      })
+    if (complejoActivo.slug === 'cabanas-vip') {
+      const tabla = getCajaTable(form.tipo)
+      const detalle = `${titulo} · ${reserva.codigo} - ${reserva.nombre_apellido}`
+
+      if (tabla === 'caja_silvia') {
+        await supabase.from('caja_silvia').insert({
+          complejo_id:     complejoActivo.id,
+          fecha:           form.fecha || hoy,
+          cuenta:          'Alquiler',
+          detalle,
+          ingreso_pesos:   Number(form.monto),
+          ingreso_dolares: 0,
+          ingreso_juli:    0,
+          gasto:           0,
+          retiro_pesos:    0,
+          retiro_dolares:  0,
+        })
+      } else {
+        await supabase.from(tabla).insert({
+          complejo_id:    complejoActivo.id,
+          fecha:          form.fecha || hoy,
+          detalle,
+          reserva_codigo: reserva.codigo,
+          reserva_nombre: reserva.nombre_apellido,
+          ingreso:        Number(form.monto),
+          egreso:         0,
+        })
+      }
     } else {
-      await supabase.from(tabla).insert({
-        fecha:          form.fecha || hoy,
-        detalle,
-        reserva_codigo: reserva.codigo,
-        reserva_nombre: reserva.nombre_apellido,
-        ingreso:        Number(form.monto),
-        egreso:         0,
+      // Complejos NO-VIP: cada pago registrado acá es su propia fila en
+      // movimientos_caja (nunca se actualiza una existente), origen='pago'.
+      // Libro contable continuo, igual que Cabañas VIP — sin temporada.
+      const bucket = movimientoCajaBucket(form.tipo)
+      await supabase.from('movimientos_caja').insert({
+        complejo_id:      complejoActivo.id,
+        tipo:             'ingreso',
+        categoria:        'alquiler',
+        reserva_id:       id,
+        origen:           'pago',
+        fecha:            form.fecha || hoy,
+        detalle:          `Pago — ${reserva.codigo} ${reserva.nombre_apellido}`,
+        monto_depositos:  bucket === 'monto_depositos' ? Number(form.monto) : 0,
+        monto_efectivo:   bucket === 'monto_efectivo'  ? Number(form.monto) : 0,
+        monto_otros:      bucket === 'monto_otros'     ? Number(form.monto) : 0,
       })
     }
 
@@ -146,7 +214,7 @@ export default function ReservaPago() {
       }).catch((e) => console.error('[ReservaPago] Email recibo ERROR:', e))
     }
 
-    navigate(`/reservas/${id}`, nuevoEstado === 'Confirmada'
+    navigate(`/${complejoActivo.slug}/reservas/${id}`, nuevoEstado === 'Confirmada'
       ? { state: { toast: 'Reserva confirmada automáticamente' } }
       : {})
   }
@@ -157,14 +225,14 @@ export default function ReservaPago() {
   const tieneSena1  = Number(reserva.sena1_monto  || 0) > 0
   const tieneSena2  = Number(reserva.sena2_monto  || 0) > 0
   const slotSiguiente = !tieneSena1 ? '1ª Seña' : !tieneSena2 ? '2ª Seña' : null
-  const pagado = Number(reserva.sena1_monto || 0) + Number(reserva.sena2_monto || 0) + Number(reserva.pago_cabana_monto || 0)
+  const pagado = totalPagadoReserva(reserva.sena1_monto, reserva.sena2_monto, reserva.pago_cabana_monto)
   const saldo  = Number(reserva.monto_total || 0) - pagado
 
   return (
     <div className="max-w-lg mx-auto">
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
-        <button onClick={() => navigate(`/reservas/${id}`)} className="text-[#888] hover:text-[#333] text-sm transition-colors">
+        <button onClick={() => navigate(`/${complejoActivo.slug}/reservas/${id}`)} className="text-[#888] hover:text-[#333] text-sm transition-colors">
           ← Volver
         </button>
         <div>
@@ -205,15 +273,17 @@ export default function ReservaPago() {
             <h3 className="text-[18px] font-semibold text-[#111111]">
               Registrar pago
             </h3>
-            <span className="badge" style={{ background: '#fee7ef', color: '#d2ab84' }}>
+            <span className="badge" style={{ background: 'var(--color-secundario)', color: 'var(--color-primario)' }}>
               Se asignará como {slotSiguiente}
             </span>
           </div>
 
           <Field label="Monto ($)">
             <input
+              ref={montoRef}
               type="number"
               min={0}
+              data-testid="input-pago-monto"
               value={form.monto}
               onChange={e => set('monto', e.target.value)}
               className={ic}
@@ -267,13 +337,14 @@ export default function ReservaPago() {
           <div className="flex gap-3 pt-1">
             <button
               type="button"
-              onClick={() => navigate(`/reservas/${id}`)}
+              onClick={() => navigate(`/${complejoActivo.slug}/reservas/${id}`)}
               className="btn-secondary flex-1 py-2.5"
             >
               Cancelar
             </button>
             <button
               type="submit"
+              data-testid="btn-submit-pago"
               disabled={saving}
               className="btn-primary flex-1 py-2.5 disabled:opacity-50"
             >

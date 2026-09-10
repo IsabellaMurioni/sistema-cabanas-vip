@@ -3,7 +3,26 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { format, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
-import { getCabanaColor } from '../lib/cabanas'
+import { useComplejo } from '../context/ComplejoContext'
+
+// Este archivo exporta fetchReservasPorComplejo además del componente
+// default, para que los tests de integración (tests/integration/)
+// puedan ejercitar la query real en vez de reimplementarla. Rompe el
+// supuesto de Fast Refresh de "un archivo de componente sólo exporta
+// componentes" — sin impacto en runtime/producción.
+/* eslint-disable react-refresh/only-export-components */
+
+// Query real de la lista de reservas de un complejo — usada por
+// Reservas.jsx. Devuelve la respuesta cruda de supabase-js ({data,
+// error}); el caller decide qué hacer con cada una (acá, ignorar el
+// error y mostrar lista vacía, igual que siempre).
+export async function fetchReservasPorComplejo(supabase, complejoId) {
+  return supabase
+    .from('reservas')
+    .select('*')
+    .eq('complejo_id', complejoId)
+    .order('created_at', { ascending: false })
+}
 
 const MESES = [
   'Enero','Febrero','Marzo','Abril','Mayo','Junio',
@@ -18,13 +37,22 @@ const estadoBadge = {
 }
 
 function CabanaBadge({ cabana }) {
+  const { getCabanaColor, cabanasPorGrupo } = useComplejo()
+  const grupo = cabanasPorGrupo.find((s) => s.cabanas.includes(cabana))?.grupo
   return (
-    <span
-      className="inline-flex items-center px-2 py-0.5 rounded-[8px] text-xs font-semibold text-white"
-      style={{ backgroundColor: getCabanaColor(cabana) }}
-    >
-      {cabana}
-    </span>
+    <div className="inline-flex flex-col items-start gap-0.5">
+      {grupo && (
+        <span className="text-[9px] font-bold uppercase tracking-wide text-[#888]">
+          {grupo}
+        </span>
+      )}
+      <span
+        className="inline-flex items-center px-2 py-0.5 rounded-[8px] text-xs font-semibold text-white"
+        style={{ backgroundColor: getCabanaColor(cabana) }}
+      >
+        {cabana}
+      </span>
+    </div>
   )
 }
 
@@ -37,6 +65,7 @@ function saldoRestante(r) {
 
 export default function Reservas() {
   const navigate = useNavigate()
+  const { complejoActivo } = useComplejo()
   const [reservas, setReservas]       = useState([])
   const [loading, setLoading]         = useState(true)
   const [search, setSearch]           = useState('')
@@ -44,16 +73,17 @@ export default function Reservas() {
   const [filtroEstado, setFiltroEstado] = useState('')
 
   const fetchReservas = async () => {
+    if (!complejoActivo) {
+      setReservas([])
+      return
+    }
     setLoading(true)
-    const { data } = await supabase
-      .from('reservas')
-      .select('*')
-      .order('created_at', { ascending: false })
+    const { data } = await fetchReservasPorComplejo(supabase, complejoActivo.id)
     setReservas(data || [])
     setLoading(false)
   }
 
-  useEffect(() => { fetchReservas() }, [])
+  useEffect(() => { fetchReservas() }, [complejoActivo?.id])
 
   const handleFinalizar = async (id) => {
     if (!confirm('¿Marcar esta reserva como Finalizada?')) return
@@ -71,9 +101,9 @@ export default function Reservas() {
     const paths = [r.sena1_comprobante, r.sena2_comprobante, r.pago_cabana_comprobante].filter(Boolean)
     if (paths.length > 0) await supabase.storage.from('comprobantes').remove(paths)
     await Promise.all([
-      supabase.from('caja_banco').delete().eq('reserva_codigo', r.codigo),
-      supabase.from('caja_mercado_pago').delete().eq('reserva_codigo', r.codigo),
-      supabase.from('caja_silvia').delete().ilike('detalle', `%${r.codigo}%`),
+      supabase.from('caja_banco').delete().eq('reserva_codigo', r.codigo).eq('complejo_id', complejoActivo.id),
+      supabase.from('caja_mercado_pago').delete().eq('reserva_codigo', r.codigo).eq('complejo_id', complejoActivo.id),
+      supabase.from('caja_silvia').delete().ilike('detalle', `%${r.codigo}%`).eq('complejo_id', complejoActivo.id),
     ])
     await supabase.from('reservas').delete().eq('id', r.id)
     fetchReservas()
@@ -108,7 +138,7 @@ export default function Reservas() {
           <h1 className="text-[28px] font-bold text-[#111111] leading-tight">Reservas</h1>
           <p className="text-sm text-[#888888] mt-0.5">{filtered.length} reserva{filtered.length !== 1 ? 's' : ''}</p>
         </div>
-        <button onClick={() => navigate('/reservas/nueva')} className="btn-primary">
+        <button onClick={() => navigate(`/${complejoActivo.slug}/reservas/nueva`)} className="btn-primary">
           + Nueva reserva
         </button>
       </div>
@@ -184,7 +214,7 @@ export default function Reservas() {
                 const finalizada = r.estado === 'Finalizada'
                 return (
                   <tr key={r.id} style={finalizada ? { opacity: 0.65 } : {}}>
-                    <td className="font-mono font-semibold" style={{ color: finalizada ? '#888' : '#d2ab84' }}>
+                    <td className="font-mono font-semibold" style={{ color: finalizada ? '#888' : 'var(--color-primario)' }}>
                       {r.codigo}
                     </td>
                     <td className="font-medium" style={{ color: finalizada ? '#888' : '#111111' }}>
@@ -211,9 +241,9 @@ export default function Reservas() {
                     </td>
                     <td>
                       <div className="flex gap-3 items-center flex-wrap">
-                        <button onClick={() => navigate(`/reservas/${r.id}`)} className="text-[#d2ab84] hover:text-[#c49870] text-xs font-semibold transition-colors">Ver</button>
-                        <button onClick={() => navigate(`/reservas/${r.id}/editar`)} className="text-[#888] hover:text-[#333] text-xs font-medium transition-colors">Editar</button>
-                        <button onClick={() => navigate(`/reservas/${r.id}/pago`)} className="text-[#d2ab84] hover:text-[#c49870] text-xs font-semibold transition-colors">Pago</button>
+                        <button onClick={() => navigate(`/${complejoActivo.slug}/reservas/${r.id}`)} className="text-[var(--color-primario)] hover:text-[var(--color-primario-hover)] text-xs font-semibold transition-colors">Ver</button>
+                        <button onClick={() => navigate(`/${complejoActivo.slug}/reservas/${r.id}/editar`)} className="text-[#888] hover:text-[#333] text-xs font-medium transition-colors">Editar</button>
+                        <button onClick={() => navigate(`/${complejoActivo.slug}/reservas/${r.id}/pago`)} className="text-[var(--color-primario)] hover:text-[var(--color-primario-hover)] text-xs font-semibold transition-colors">Pago</button>
                         {r.estado !== 'Finalizada' && r.estado !== 'Cancelada' && (
                           <button onClick={() => handleFinalizar(r.id)} className="text-[#888] hover:text-[#333] text-xs font-medium transition-colors">Finalizar</button>
                         )}
