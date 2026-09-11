@@ -3,8 +3,12 @@
 // restringido ('limitado_caja_silvia', 'limitado_reservas') en el
 // sidebar (nav), en las rutas (guard) y dentro de Caja (tabs) vive en
 // estas funciones puras — RLS (021_membresias_rol.sql /
-// 024_membresias_rol_limitado_reservas.sql) es el bloqueo real, esto
+// 024_membresias_rol_limitado_reservas.sql /
+// 025_precios_acceso_roles_limitados.sql) es el bloqueo real, esto
 // sólo cubre que la UI no muestre lo que la base ya le va a negar.
+// Precios tiene acceso completo para los dos roles restringidos desde
+// 025 — sólo Ganancias (los dos) y Caja ('limitado_reservas') siguen
+// ocultas.
 import { describe, it, expect } from 'vitest'
 import { rolParaComplejo, esRolLimitado, navItemsVisibles, seccionVisible } from '../../src/context/ComplejoContext'
 import { tabsCajaVipVisibles } from '../../src/pages/Caja'
@@ -54,14 +58,14 @@ describe('navItemsVisibles (código real) — visibilidad del sidebar', () => {
     expect(navItemsVisibles(NAV, 'completo')).toEqual(NAV)
   })
 
-  it('rol "limitado_caja_silvia" no ve Ganancias ni Precios (Caja se mantiene)', () => {
+  it('rol "limitado_caja_silvia" no ve Ganancias — Caja y Precios se mantienen', () => {
     const visibles = navItemsVisibles(NAV, 'limitado_caja_silvia')
-    expect(visibles.map((i) => i.label)).toEqual(['Reservas', 'Disponibilidad', 'Caja'])
+    expect(visibles.map((i) => i.label)).toEqual(['Reservas', 'Disponibilidad', 'Caja', 'Precios'])
   })
 
-  it('rol "limitado_reservas" sólo ve Reservas y Disponibilidad — ni Caja, ni Ganancias, ni Precios', () => {
+  it('rol "limitado_reservas" ve Reservas, Disponibilidad y Precios — ni Caja, ni Ganancias', () => {
     const visibles = navItemsVisibles(NAV, 'limitado_reservas')
-    expect(visibles.map((i) => i.label)).toEqual(['Reservas', 'Disponibilidad'])
+    expect(visibles.map((i) => i.label)).toEqual(['Reservas', 'Disponibilidad', 'Precios'])
   })
 
   it('rol undefined (sin membresía resuelta todavía) se trata como no-limitado', () => {
@@ -76,16 +80,16 @@ describe('seccionVisible (código real) — misma fuente de verdad que usa el gu
     expect(seccionVisible('Precios', 'completo')).toBe(true)
   })
 
-  it('rol "limitado_caja_silvia" ve Caja pero no Ganancias ni Precios', () => {
+  it('rol "limitado_caja_silvia" ve Caja y Precios, pero no Ganancias', () => {
     expect(seccionVisible('Caja', 'limitado_caja_silvia')).toBe(true)
     expect(seccionVisible('Ganancias', 'limitado_caja_silvia')).toBe(false)
-    expect(seccionVisible('Precios', 'limitado_caja_silvia')).toBe(false)
+    expect(seccionVisible('Precios', 'limitado_caja_silvia')).toBe(true)
   })
 
-  it('rol "limitado_reservas" no ve Caja, Ganancias ni Precios', () => {
+  it('rol "limitado_reservas" ve Precios, pero no Caja ni Ganancias', () => {
     expect(seccionVisible('Caja', 'limitado_reservas')).toBe(false)
     expect(seccionVisible('Ganancias', 'limitado_reservas')).toBe(false)
-    expect(seccionVisible('Precios', 'limitado_reservas')).toBe(false)
+    expect(seccionVisible('Precios', 'limitado_reservas')).toBe(true)
   })
 
   it('rol undefined (sin membresía resuelta todavía) ve todo — mismo criterio que navItemsVisibles', () => {

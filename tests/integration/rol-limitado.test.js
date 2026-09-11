@@ -16,12 +16,11 @@
 // SEGUNDA fila en un complejo distinto.
 //
 // Confirma que rol='limitado_caja_silvia' bloquea, a nivel de base, a
-// caja_juli / caja_banco / caja_mercado_pago / periodos_precios /
-// precios_pax — incluso con `.eq(complejo_id, vipId)` explícito,
-// apuntando al ÚNICO complejo donde este usuario sí tiene membresía —
-// mientras sigue pudiendo leer/escribir reservas y caja_silvia con
-// total normalidad (esas dos tablas no cambiaron: sus políticas RLS no
-// hacen referencia a `rol`).
+// caja_juli / caja_banco / caja_mercado_pago — incluso con
+// `.eq(complejo_id, vipId)` explícito, apuntando al ÚNICO complejo
+// donde este usuario sí tiene membresía — mientras sigue pudiendo
+// leer/escribir reservas y caja_silvia con total normalidad (esas dos
+// tablas no cambiaron: sus políticas RLS no hacen referencia a `rol`).
 //
 // Y que rol='limitado_reservas' bloquea, a nivel de base, TODO lo de
 // Caja — movimientos_caja/cierres_caja/cierre_reconciliacion/
@@ -37,6 +36,12 @@
 // mientras sigue pudiendo leer/escribir reservas con total normalidad
 // (esa tabla no cambió, ver la consigna: "reservas stays accessible to
 // any rol").
+//
+// Desde 025_precios_acceso_roles_limitados.sql, periodos_precios y
+// precios_pax dejaron de estar en la lista de tablas bloqueadas para
+// estos dos roles — tienen acceso COMPLETO (SELECT/INSERT/UPDATE/
+// DELETE) ahí, scopeado por complejo_id vía membresias exactamente
+// igual que 'completo'. Ver las 2 describe blocks dedicadas más abajo.
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest'
 import { getFullAccessClient, getLimitedAccessClient } from '../setup/supabaseTestClient'
 import { autotestNombre, autotestDetalle, autotestCodigo, autotestCierreNombre, getComplejoIdBySlug } from './helpers'
@@ -45,6 +50,7 @@ let limitedClient
 let fullClient
 let vipId
 let losAmigosId
+let mimmoId // usado sólo como "complejo ajeno" (0 membresías de este usuario ahí, con ningún rol) para confirmar que el scoping por complejo_id sigue vivo incluso para Precios.
 let periodoVipId // período AUTOTEST_ propio y descartable, sólo para precios_pax — nunca se toca un período real de precios de Cabañas VIP.
 
 const cleanup = {
@@ -57,6 +63,7 @@ beforeAll(async () => {
   limitedClient = await getLimitedAccessClient()
   vipId = await getComplejoIdBySlug(fullClient, 'cabanas-vip')
   losAmigosId = await getComplejoIdBySlug(fullClient, 'los-amigos')
+  mimmoId = await getComplejoIdBySlug(fullClient, 'mimmo')
 
   const { data: periodo, error } = await fullClient
     .from('periodos_precios')
@@ -125,7 +132,7 @@ describe('Sanity — rol="limitado_caja_silvia" sigue con acceso total a reserva
   })
 })
 
-describe('RLS bloquea SELECT de las 5 tablas restringidas, aun con .eq(complejo_id/periodo_id) explícito al propio complejo', () => {
+describe('RLS bloquea SELECT de caja_juli/caja_banco/caja_mercado_pago para rol="limitado_caja_silvia", aun con .eq(complejo_id) explícito al propio complejo', () => {
   it('caja_juli: 0 filas para el usuario limitado, aunque exista una real', async () => {
     const { data: creada, error: errCrear } = await fullClient.from('caja_juli').insert({
       complejo_id: vipId, fecha: '2099-01-10', seccion: 'main', tipo_main: 'ingreso',
@@ -162,21 +169,9 @@ describe('RLS bloquea SELECT de las 5 tablas restringidas, aun con .eq(complejo_
     expect(error).toBeNull()
     expect(data).toEqual([])
   })
-
-  it('periodos_precios: 0 filas para el usuario limitado, aunque exista el período AUTOTEST_ de setup', async () => {
-    const { data, error } = await limitedClient.from('periodos_precios').select('*').eq('id', periodoVipId)
-    expect(error).toBeNull()
-    expect(data).toEqual([])
-  })
-
-  it('precios_pax: 0 filas para el usuario limitado, aunque exista la fila AUTOTEST_ de setup', async () => {
-    const { data, error } = await limitedClient.from('precios_pax').select('*').eq('periodo_id', periodoVipId)
-    expect(error).toBeNull()
-    expect(data).toEqual([])
-  })
 })
 
-describe('RLS bloquea INSERT en las 5 tablas restringidas, aun apuntando al propio complejo', () => {
+describe('RLS bloquea INSERT de caja_juli/caja_banco/caja_mercado_pago para rol="limitado_caja_silvia", aun apuntando al propio complejo', () => {
   it('insertar en caja_juli es rechazado', async () => {
     const { data, error } = await limitedClient.from('caja_juli').insert({
       complejo_id: vipId, fecha: '2099-01-11', seccion: 'main', tipo_main: 'ingreso',
@@ -204,29 +199,72 @@ describe('RLS bloquea INSERT en las 5 tablas restringidas, aun apuntando al prop
     expect(error).toBeTruthy()
     expect(data == null || data.length === 0).toBe(true)
   })
+})
 
-  it('insertar en periodos_precios es rechazado', async () => {
-    const { data, error } = await limitedClient.from('periodos_precios').insert({
-      complejo_id: vipId, nombre: autotestDetalle('rol insert denegado periodo'), fecha_inicio: '2099-02-01',
-    }).select()
-    if (data && data.length > 0) cleanup.periodos_precios.push(...data.map((r) => r.id))
-    expect(error).toBeTruthy()
-    expect(data == null || data.length === 0).toBe(true)
+describe('rol="limitado_caja_silvia" tiene acceso COMPLETO a Precios en cabanas-vip (025_precios_acceso_roles_limitados.sql)', () => {
+  it('puede ver (SELECT) el período AUTOTEST_ de setup y su fila de precios_pax', async () => {
+    const { data: periodos, error: errP } = await limitedClient.from('periodos_precios').select('*').eq('id', periodoVipId)
+    expect(errP).toBeNull()
+    expect(periodos).toHaveLength(1)
+
+    const { data: precios, error: errPP } = await limitedClient.from('precios_pax').select('*').eq('periodo_id', periodoVipId)
+    expect(errPP).toBeNull()
+    expect(precios.length).toBeGreaterThan(0)
   })
 
-  it('insertar en precios_pax (bajo el período AUTOTEST_ de setup) es rechazado', async () => {
-    // pax=3: no colisiona con la fila pax=2 ya creada por fullClient en
-    // el setup — así un eventual bug de RLS que dejara pasar el insert
-    // no quedaría enmascarado por una violación de la constraint unique
-    // (periodo_id, pax).
+  it('puede insertar (INSERT) un nuevo período en cabanas-vip', async () => {
+    const { data, error } = await limitedClient.from('periodos_precios').insert({
+      complejo_id: vipId, nombre: autotestDetalle('periodo silvia insert'), fecha_inicio: '2099-05-01',
+    }).select().single()
+    expect(error).toBeNull()
+    expect(data).toBeTruthy()
+    cleanup.periodos_precios.push(data.id)
+  })
+
+  it('puede insertar (INSERT) una fila de precios_pax bajo el período AUTOTEST_ de setup', async () => {
     const { data, error } = await limitedClient.from('precios_pax').insert({
-      periodo_id: periodoVipId, pax: 3, precio_noche: 1, precio_semana: 1,
-    }).select()
-    // Sin tabla propia en `cleanup`: si esto llegara a insertarse pese a
-    // todo, el afterAll de más arriba lo borra igual (cascada del
-    // período AUTOTEST_ de setup).
-    expect(error).toBeTruthy()
-    expect(data == null || data.length === 0).toBe(true)
+      periodo_id: periodoVipId, pax: 4, precio_noche: 999, precio_semana: 999,
+    }).select().single()
+    expect(error).toBeNull()
+    expect(data).toBeTruthy()
+    // Sin cleanup propio: cascadea con el período AUTOTEST_ de setup en el afterAll de arriba.
+  })
+
+  it('puede actualizar (UPDATE) una fila de precios_pax existente', async () => {
+    const { data: fila } = await fullClient.from('precios_pax').select('id').eq('periodo_id', periodoVipId).eq('pax', 2).single()
+    const { data, error } = await limitedClient.from('precios_pax').update({ precio_noche: 12345 }).eq('id', fila.id).select().single()
+    expect(error).toBeNull()
+    expect(data.precio_noche).toBe(12345)
+  })
+
+  it('puede borrar (DELETE) un período de precios propio', async () => {
+    const { data: nuevo, error: errCrear } = await fullClient.from('periodos_precios').insert({
+      complejo_id: vipId, nombre: autotestDetalle('periodo silvia delete'), fecha_inicio: '2099-06-01',
+    }).select().single()
+    expect(errCrear).toBeNull()
+    // Registrado ANTES de intentar el delete: si limitedClient no llega
+    // a poder borrarlo (ej. este test corriendo antes de que la
+    // migración 025 esté aplicada), el afterEach de arriba lo limpia
+    // igual — nunca queda AUTOTEST_ colgado por un delete que falló.
+    cleanup.periodos_precios.push(nuevo.id)
+
+    const { error } = await limitedClient.from('periodos_precios').delete().eq('id', nuevo.id)
+    expect(error).toBeNull()
+
+    const { data: verif } = await fullClient.from('periodos_precios').select('id').eq('id', nuevo.id)
+    expect(verif).toEqual([])
+  })
+
+  it('sigue SIN acceso a Precios de un complejo ajeno (mimmo) — el scoping por complejo_id sigue vivo', async () => {
+    const { data: creado, error: errCrear } = await fullClient.from('periodos_precios').insert({
+      complejo_id: mimmoId, nombre: autotestDetalle('periodo ajeno silvia'), fecha_inicio: '2099-07-01',
+    }).select().single()
+    expect(errCrear).toBeNull()
+    cleanup.periodos_precios.push(creado.id)
+
+    const { data, error } = await limitedClient.from('periodos_precios').select('*').eq('id', creado.id)
+    expect(error).toBeNull()
+    expect(data).toEqual([])
   })
 })
 
@@ -404,5 +442,99 @@ describe('RLS bloquea rol="limitado_reservas" en las 4 tablas de Caja de VIP tam
     const { data: vistos, error: errSelect } = await limitedClient.from('caja_mercado_pago').select('*').eq('complejo_id', losAmigosId)
     expect(errSelect).toBeNull()
     expect(vistos).toEqual([])
+  })
+})
+
+describe('rol="limitado_reservas" tiene acceso COMPLETO a Precios en los-amigos (025_precios_acceso_roles_limitados.sql)', () => {
+  // Período AUTOTEST_ propio de esta describe (no el de VIP, ya usado
+  // por el bloque de 'limitado_caja_silvia' más arriba) — este usuario
+  // sólo tiene membresía con rol='limitado_reservas' en los-amigos.
+  let periodoLosAmigosId
+
+  beforeAll(async () => {
+    const { data, error } = await fullClient.from('periodos_precios').insert({
+      complejo_id: losAmigosId, nombre: autotestDetalle('periodo reservas setup'), fecha_inicio: '2099-01-01',
+    }).select().single()
+    if (error || !data) {
+      throw new Error(`[rol-limitado.test.js] No se pudo crear el período AUTOTEST_ de setup en los-amigos: ${error?.message}`)
+    }
+    periodoLosAmigosId = data.id
+
+    const { error: errPax } = await fullClient.from('precios_pax').insert({
+      periodo_id: periodoLosAmigosId, pax: 2, precio_noche: 1, precio_semana: 1,
+    })
+    if (errPax) {
+      throw new Error(`[rol-limitado.test.js] No se pudo crear la fila AUTOTEST_ de precios_pax de setup en los-amigos: ${errPax.message}`)
+    }
+  })
+
+  afterAll(async () => {
+    // Cascada: se lleva puesta cualquier fila de precios_pax colgando de él.
+    if (periodoLosAmigosId) {
+      await fullClient.from('periodos_precios').delete().eq('id', periodoLosAmigosId)
+    }
+  })
+
+  it('puede ver (SELECT) el período AUTOTEST_ de setup y su fila de precios_pax', async () => {
+    const { data: periodos, error: errP } = await limitedClient.from('periodos_precios').select('*').eq('id', periodoLosAmigosId)
+    expect(errP).toBeNull()
+    expect(periodos).toHaveLength(1)
+
+    const { data: precios, error: errPP } = await limitedClient.from('precios_pax').select('*').eq('periodo_id', periodoLosAmigosId)
+    expect(errPP).toBeNull()
+    expect(precios.length).toBeGreaterThan(0)
+  })
+
+  it('puede insertar (INSERT) un nuevo período en los-amigos', async () => {
+    const { data, error } = await limitedClient.from('periodos_precios').insert({
+      complejo_id: losAmigosId, nombre: autotestDetalle('periodo reservas insert'), fecha_inicio: '2099-05-01',
+    }).select().single()
+    expect(error).toBeNull()
+    expect(data).toBeTruthy()
+    cleanup.periodos_precios.push(data.id)
+  })
+
+  it('puede insertar (INSERT) una fila de precios_pax bajo el período AUTOTEST_ de setup', async () => {
+    const { data, error } = await limitedClient.from('precios_pax').insert({
+      periodo_id: periodoLosAmigosId, pax: 4, precio_noche: 999, precio_semana: 999,
+    }).select().single()
+    expect(error).toBeNull()
+    expect(data).toBeTruthy()
+    // Sin cleanup propio: cascadea con el período AUTOTEST_ de setup en el afterAll de esta describe.
+  })
+
+  it('puede actualizar (UPDATE) una fila de precios_pax existente', async () => {
+    const { data: fila } = await fullClient.from('precios_pax').select('id').eq('periodo_id', periodoLosAmigosId).eq('pax', 2).single()
+    const { data, error } = await limitedClient.from('precios_pax').update({ precio_noche: 54321 }).eq('id', fila.id).select().single()
+    expect(error).toBeNull()
+    expect(data.precio_noche).toBe(54321)
+  })
+
+  it('puede borrar (DELETE) un período de precios propio', async () => {
+    const { data: nuevo, error: errCrear } = await fullClient.from('periodos_precios').insert({
+      complejo_id: losAmigosId, nombre: autotestDetalle('periodo reservas delete'), fecha_inicio: '2099-06-01',
+    }).select().single()
+    expect(errCrear).toBeNull()
+    // Registrado ANTES de intentar el delete — mismo motivo que el test
+    // equivalente de 'limitado_caja_silvia' más arriba.
+    cleanup.periodos_precios.push(nuevo.id)
+
+    const { error } = await limitedClient.from('periodos_precios').delete().eq('id', nuevo.id)
+    expect(error).toBeNull()
+
+    const { data: verif } = await fullClient.from('periodos_precios').select('id').eq('id', nuevo.id)
+    expect(verif).toEqual([])
+  })
+
+  it('sigue SIN acceso a Precios de un complejo ajeno (mimmo) — el scoping por complejo_id sigue vivo', async () => {
+    const { data: creado, error: errCrear } = await fullClient.from('periodos_precios').insert({
+      complejo_id: mimmoId, nombre: autotestDetalle('periodo ajeno reservas'), fecha_inicio: '2099-07-01',
+    }).select().single()
+    expect(errCrear).toBeNull()
+    cleanup.periodos_precios.push(creado.id)
+
+    const { data, error } = await limitedClient.from('periodos_precios').select('*').eq('id', creado.id)
+    expect(error).toBeNull()
+    expect(data).toEqual([])
   })
 })

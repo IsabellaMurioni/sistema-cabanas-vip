@@ -72,13 +72,16 @@ export function esRolLimitado(rol) {
 // un conjunto distinto: 'limitado_caja_silvia' mantiene Caja (sólo
 // queda tab-restringida por dentro, ver tabsCajaVipVisibles en
 // Caja.jsx); 'limitado_reservas' la oculta del todo, en los 5
-// complejos por igual (no está atado a uno puntual). Única fuente de
-// verdad para Layout.jsx (nav) Y RequiereSeccion.jsx (guard de ruta) —
-// ambos la consultan vía navItemsVisibles/seccionVisible, así que
-// nunca pueden desincronizarse sobre qué ve cada rol.
+// complejos por igual (no está atado a uno puntual). Precios tiene
+// acceso completo (ver/crear/editar/borrar) para los dos roles
+// restringidos desde 025_precios_acceso_roles_limitados.sql — por eso
+// no aparece en ninguno de los dos sets. Única fuente de verdad para
+// Layout.jsx (nav) Y RequiereSeccion.jsx (guard de ruta) — ambos la
+// consultan vía navItemsVisibles/seccionVisible, así que nunca pueden
+// desincronizarse sobre qué ve cada rol.
 const SECCIONES_OCULTAS_POR_ROL = {
-  limitado_caja_silvia: new Set(['Ganancias', 'Precios']),
-  limitado_reservas:    new Set(['Ganancias', 'Precios', 'Caja']),
+  limitado_caja_silvia: new Set(['Ganancias']),
+  limitado_reservas:    new Set(['Ganancias', 'Caja']),
 }
 
 export function seccionVisible(seccion, rol) {
