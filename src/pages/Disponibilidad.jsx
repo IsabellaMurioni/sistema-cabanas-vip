@@ -22,6 +22,19 @@ const DAY_W = 38
 const ROW_H = 48
 const ROW_H_SINGLE = 80
 
+// Piso de altura total para la grilla de disponibilidad — medido en vivo:
+// con la fila base (ROW_H) Mimmo, el más chico de los dos complejos con
+// muchas cabañas (12 vs. las 15 de VIP), arma 12 * 48 = 576px sólo de
+// filas (sin contar separadores de grupo). Usamos ese número — no uno
+// inventado — como piso: complejos con menos cabañas (Casas Azahar, Los
+// Amigos, Chacras del Mar) reparten esa misma altura entre menos filas y
+// quedan con la grilla llena en vez de corta/vacía; Mimmo y VIP, que ya
+// superan el piso con la fila base, no cambian (576/12 = 48 = ROW_H;
+// 576/15 < 48). TARGET_MIN_H_SINGLE mantiene la misma proporción para la
+// vista de una sola cabaña (12 * 80 = 960).
+const TARGET_MIN_H_TODAS = 576
+const TARGET_MIN_H_SINGLE = 960
+
 const ESTADO_STYLES = {
   Pendiente:  'badge badge-pendiente',
   Confirmada: 'badge badge-confirmada',
@@ -526,6 +539,13 @@ export default function Disponibilidad() {
 
   const occupiedCount = CABANAS.filter((c) => cabanaStatus[c]?.occupied).length
 
+  // Complejos con pocas cabañas reciben filas proporcionalmente más altas
+  // (ver TARGET_MIN_H_TODAS/SINGLE más arriba) — genérico por cantidad de
+  // cabañas, sin casos especiales por complejo.
+  const numCabanas = CABANAS.length || 1
+  const rowH = Math.max(ROW_H, TARGET_MIN_H_TODAS / numCabanas)
+  const rowHSingle = Math.max(ROW_H_SINGLE, TARGET_MIN_H_SINGLE / numCabanas)
+
   return (
     <div className="flex flex-col h-full fade-in">
       {/* ── Header ── */}
@@ -610,7 +630,7 @@ export default function Disponibilidad() {
                         key={cabana}
                         onClick={() => { setSelectedCabana(cabana); setShowAll(false) }}
                         style={{
-                          height: ROW_H, display: 'flex', alignItems: 'center',
+                          height: rowH, display: 'flex', alignItems: 'center',
                           gap: 8, paddingLeft: 10, paddingRight: 8,
                           borderBottom: '1px solid #f0e6d8',
                           borderLeft: `3px solid ${getCabanaColor(cabana)}`,
@@ -650,7 +670,7 @@ export default function Disponibilidad() {
                         <div
                           key={cabana}
                           style={{
-                            height: ROW_H, borderBottom: '1px solid #f0e6d8',
+                            height: rowH, borderBottom: '1px solid #f0e6d8',
                             backgroundColor: ci % 2 === 0 ? '#fff' : 'rgba(254,231,239,0.35)',
                             overflow: 'visible',
                           }}
@@ -660,7 +680,7 @@ export default function Disponibilidad() {
                             reservas={reservas}
                             startDate={startDate}
                             endDate={endDate}
-                            height={ROW_H}
+                            height={rowH}
                             onReservaClick={setPopup}
                           />
                         </div>
@@ -871,7 +891,7 @@ export default function Disponibilidad() {
                       reservas={reservas}
                       startDate={startDate}
                       endDate={endDate}
-                      height={ROW_H_SINGLE}
+                      height={rowHSingle}
                       onReservaClick={setPopup}
                     />
                   </div>
