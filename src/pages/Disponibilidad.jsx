@@ -19,6 +19,8 @@ import { es } from 'date-fns/locale'
 /* eslint-disable react-refresh/only-export-components */
 
 const DAY_W = 38
+const ROW_H = 48
+const ROW_H_SINGLE = 80
 
 const ESTADO_STYLES = {
   Pendiente:  'badge badge-pendiente',
@@ -608,7 +610,7 @@ export default function Disponibilidad() {
                         key={cabana}
                         onClick={() => { setSelectedCabana(cabana); setShowAll(false) }}
                         style={{
-                          height: 36, display: 'flex', alignItems: 'center',
+                          height: ROW_H, display: 'flex', alignItems: 'center',
                           gap: 8, paddingLeft: 10, paddingRight: 8,
                           borderBottom: '1px solid #f0e6d8',
                           borderLeft: `3px solid ${getCabanaColor(cabana)}`,
@@ -648,7 +650,7 @@ export default function Disponibilidad() {
                         <div
                           key={cabana}
                           style={{
-                            height: 36, borderBottom: '1px solid #f0e6d8',
+                            height: ROW_H, borderBottom: '1px solid #f0e6d8',
                             backgroundColor: ci % 2 === 0 ? '#fff' : 'rgba(254,231,239,0.35)',
                             overflow: 'visible',
                           }}
@@ -658,7 +660,7 @@ export default function Disponibilidad() {
                             reservas={reservas}
                             startDate={startDate}
                             endDate={endDate}
-                            height={36}
+                            height={ROW_H}
                             onReservaClick={setPopup}
                           />
                         </div>
@@ -869,7 +871,7 @@ export default function Disponibilidad() {
                       reservas={reservas}
                       startDate={startDate}
                       endDate={endDate}
-                      height={64}
+                      height={ROW_H_SINGLE}
                       onReservaClick={setPopup}
                     />
                   </div>
