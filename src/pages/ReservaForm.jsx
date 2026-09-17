@@ -599,14 +599,6 @@ export default function ReservaForm() {
       return
     }
 
-    const hoy = new Date()
-    hoy.setHours(0, 0, 0, 0)
-    const fechaEntrada = new Date(form.fecha_entrada + 'T00:00:00')
-    if (!isEdit && fechaEntrada < hoy) {
-      setError('No se pueden crear reservas con fecha de entrada anterior a hoy.')
-      return
-    }
-
     if (minimoNochesError) {
       setError(minimoNochesError + '. Ajustá las fechas para cumplir el mínimo.')
       return
@@ -1061,6 +1053,7 @@ export default function ReservaForm() {
             </Field>
             <Field label="Estado">
               <select
+                data-testid="select-estado"
                 value={form.estado}
                 onChange={(e) => set('estado', e.target.value)}
                 className={inputClass}
@@ -1078,7 +1071,6 @@ export default function ReservaForm() {
                 value={form.fecha_entrada}
                 onChange={(e) => handleFechaEntrada(e.target.value)}
                 required
-                min={!isEdit ? new Date().toISOString().slice(0, 10) : undefined}
                 className={inputClass}
               />
             </Field>

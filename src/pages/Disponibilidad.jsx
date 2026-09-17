@@ -9,6 +9,15 @@ import {
 } from 'date-fns'
 import { es } from 'date-fns/locale'
 
+// Este archivo ya exportaba sólo el componente default; ahora también
+// exporta MESES_COLOR/colorDelMes/agruparDiasPorMes para que los tests
+// unitarios (tests/unit/) puedan ejercitar la lógica real en vez de
+// reimplementarla. Rompe el supuesto de Fast Refresh de "un archivo de
+// componente sólo exporta componentes" — sin impacto en runtime/
+// producción, sólo hace que Vite recargue toda la página en vez de
+// hacer hot-swap al editar este archivo en desarrollo.
+/* eslint-disable react-refresh/only-export-components */
+
 const DAY_W = 38
 
 const ESTADO_STYLES = {
@@ -16,6 +25,69 @@ const ESTADO_STYLES = {
   Confirmada: 'badge badge-confirmada',
   Finalizada: 'badge badge-finalizada',
   Cancelada:  'badge badge-cancelada',
+}
+
+// ── Colores por mes calendario ───────────────────────────────
+// Paleta fija de 12 colores pastel/muted, uno por mes (índice 0=Enero
+// … 11=Diciembre) — el MISMO mes siempre pinta igual, en cualquier año
+// y en cualquier complejo (nada acá depende de complejoActivo). Para
+// cambiar los colores más adelante (ej. si Lorena pide otra paleta),
+// esta constante es el único lugar a tocar — nada más en el archivo
+// conoce estos valores hardcodeados.
+//
+// El orden NO sigue la rueda de color en línea recta (rojo→naranja→
+// amarillo→...) a propósito: probado en vivo, dos meses consecutivos
+// con matices vecinos en la rueda (ej. lavanda→violeta) casi no se
+// distinguían a simple vista en la franja de días. Los 12 tonos están
+// espaciados 30° en la rueda pero reordenados salteando de a 150°
+// (HSL 55%/87%: pastel/suave, con suficiente saturación para que se
+// note la diferencia) — así CUALQUIER par de meses consecutivos queda
+// a 150° o 210° de distancia, nunca vecino en la rueda.
+export const MESES_COLOR = [
+  '#F0CCCC', // Enero      — rosado suave      (H 0°)
+  '#CCF0DE', // Febrero    — verde agua suave  (H 150°)
+  '#F0CCF0', // Marzo      — magenta suave     (H 300°)
+  '#DEF0CC', // Abril      — lima suave        (H 90°)
+  '#CCCCF0', // Mayo       — lavanda suave     (H 240°)
+  '#F0DECC', // Junio      — durazno suave     (H 30°)
+  '#CCF0F0', // Julio      — celeste suave     (H 180°)
+  '#F0CCDE', // Agosto     — rosa frambuesa suave (H 330°)
+  '#CCF0CC', // Septiembre — verde suave       (H 120°)
+  '#DECCF0', // Octubre    — violeta suave     (H 270°)
+  '#F0F0CC', // Noviembre  — amarillo suave    (H 60°)
+  '#CCDEF0', // Diciembre  — azul suave        (H 210°)
+]
+
+// `monthIndex` en base 0 (igual que Date#getMonth()) — normalizado con
+// el doble módulo para no romper si alguna vez se le pasa un índice
+// fuera de [0,11] (nunca debería pasar en la práctica, pero evita un
+// undefined silencioso en vez de fallar feo).
+export function colorDelMes(monthIndex) {
+  return MESES_COLOR[((monthIndex % 12) + 12) % 12]
+}
+
+// Agrupa un rango de `numDays` días consecutivos a partir de
+// `startDate` en tramos contiguos por mes calendario (año + mes) — la
+// banda de encabezado "Septiembre 2026" (MonthHeaders, más abajo) le
+// pone un ancho de `dias * DAY_W` a cada tramo, el equivalente visual a
+// un colSpan sobre una fila de días que en este componente son flex
+// items, no <td>. `label` queda en minúscula (mismo criterio que ya usa
+// CalendarPicker con date-fns/es: la capitalización la pone el CSS
+// `textTransform: capitalize` en el render, no el string).
+export function agruparDiasPorMes(startDate, numDays) {
+  const tramos = []
+  for (let i = 0; i < numDays; i++) {
+    const day = addDays(startDate, i)
+    const mes = day.getMonth()
+    const anio = day.getFullYear()
+    const ultimo = tramos[tramos.length - 1]
+    if (ultimo && ultimo.mes === mes && ultimo.anio === anio) {
+      ultimo.dias += 1
+    } else {
+      tramos.push({ mes, anio, dias: 1, label: format(day, 'MMMM yyyy', { locale: es }) })
+    }
+  }
+  return tramos
 }
 
 function startOfToday() {
@@ -128,6 +200,38 @@ function CalendarPicker({ value, onChange, label }) {
   )
 }
 
+// ── MonthHeaders ──────────────────────────────────────────────
+// Banda de meses arriba de DayHeaders — un flex item por tramo
+// contiguo de mismo mes/año (agruparDiasPorMes), con ancho `dias *
+// DAY_W` (el equivalente visual a un colSpan). Fondo oscuro a
+// propósito, bien distinto de la fila de días clara de abajo — mismo
+// contraste que ya usan los encabezados de tabla en Caja/Ganancias
+// (bg-[#111111] text-white) en el resto de la app.
+function MonthHeaders({ startDate, numDays }) {
+  const tramos = agruparDiasPorMes(startDate, numDays)
+  return (
+    <div style={{ display: 'flex', width: numDays * DAY_W, minWidth: numDays * DAY_W, flexShrink: 0 }}>
+      {tramos.map((tramo, i) => (
+        <div
+          key={`${tramo.anio}-${tramo.mes}-${i}`}
+          style={{
+            width: tramo.dias * DAY_W, minWidth: tramo.dias * DAY_W, flexShrink: 0,
+            height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            borderRight: '1px solid #333',
+            backgroundColor: '#111111',
+            color: 'white',
+            fontSize: 11, fontWeight: 700, textTransform: 'capitalize',
+            overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
+            userSelect: 'none',
+          }}
+        >
+          {tramo.label}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // ── DayHeaders ──────────────────────────────────────────────
 function DayHeaders({ startDate, numDays }) {
   const today = startOfToday()
@@ -135,8 +239,6 @@ function DayHeaders({ startDate, numDays }) {
     <div style={{ display: 'flex', width: numDays * DAY_W, minWidth: numDays * DAY_W, flexShrink: 0, borderBottom: '1px solid #f0e6d8', backgroundColor: 'var(--color-secundario)' }}>
       {Array.from({ length: numDays }, (_, i) => {
         const day = addDays(startDate, i)
-        const dow = getDay(day)
-        const isWeekend = dow === 0 || dow === 6
         const isToday = isSameDay(day, today)
         return (
           <div
@@ -145,7 +247,7 @@ function DayHeaders({ startDate, numDays }) {
               width: DAY_W, minWidth: DAY_W, flexShrink: 0,
               textAlign: 'center', padding: '6px 0',
               borderRight: '1px solid #f0e6d8',
-              backgroundColor: isToday ? '#fff7ed' : isWeekend ? '#fff4e8' : 'transparent',
+              backgroundColor: isToday ? '#fff7ed' : colorDelMes(day.getMonth()),
               userSelect: 'none',
             }}
           >
@@ -186,8 +288,6 @@ function TimelineRow({ cabana, reservas, startDate, endDate, height = 40, onRese
       <div style={{ position: 'absolute', top: 0, left: 0, width: totalW, height: '100%', display: 'flex' }}>
         {Array.from({ length: numDays }, (_, i) => {
           const day = addDays(startDate, i)
-          const dow = getDay(day)
-          const isWeekend = dow === 0 || dow === 6
           const isToday = isSameDay(day, today)
           return (
             <div
@@ -195,7 +295,7 @@ function TimelineRow({ cabana, reservas, startDate, endDate, height = 40, onRese
               style={{
                 width: DAY_W, minWidth: DAY_W, flexShrink: 0, height: '100%',
                 borderRight: '1px solid #f0e6d8',
-                backgroundColor: isToday ? '#fff7ed' : isWeekend ? '#fff4e8' : '#fff',
+                backgroundColor: isToday ? '#fff7ed' : colorDelMes(day.getMonth()),
               }}
             />
           )
@@ -520,8 +620,8 @@ export default function Disponibilidad() {
           <div style={{ display: 'flex', overflow: 'hidden' }}>
             {/* Left: cabin names (fixed, no scroll) */}
             <div style={{ width: 136, minWidth: 136, flexShrink: 0, borderRight: '1px solid #f0e6d8' }}>
-              {/* Header spacer — matches DayHeaders height (44px) */}
-              <div style={{ height: 44, borderBottom: '1px solid #f0e6d8', backgroundColor: 'var(--color-secundario)' }} />
+              {/* Header spacer — matches MonthHeaders + DayHeaders height (22px + 44px) */}
+              <div style={{ height: 66, borderBottom: '1px solid #f0e6d8', backgroundColor: 'var(--color-secundario)' }} />
               {/* Cabin rows, grouped by seccion.grupo when present */}
               {cabanasPorGrupo.map((seccion, si) => (
                 <Fragment key={seccion.grupo || `sin-grupo-${si}`}>
@@ -570,6 +670,7 @@ export default function Disponibilidad() {
             {/* Right: scrollable timeline */}
             <div style={{ flex: 1, overflowX: 'auto', overflowY: 'hidden' }}>
               <div style={{ width: numDays * DAY_W, minWidth: numDays * DAY_W }}>
+                <MonthHeaders startDate={startDate} numDays={numDays} />
                 <DayHeaders startDate={startDate} numDays={numDays} />
                 {cabanasPorGrupo.map((seccion, si) => (
                   <Fragment key={seccion.grupo || `sin-grupo-${si}`}>
@@ -796,6 +897,7 @@ export default function Disponibilidad() {
                 {/* Timeline scrollable */}
                 <div style={{ overflowX: 'auto', flex: 1 }}>
                   <div style={{ width: numDays * DAY_W, minWidth: numDays * DAY_W }}>
+                    <MonthHeaders startDate={startDate} numDays={numDays} />
                     <DayHeaders startDate={startDate} numDays={numDays} />
                     <TimelineRow
                       cabana={selectedCabana}

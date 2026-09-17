@@ -320,3 +320,95 @@ describe('Retiros (movimientos_caja, tipo="retiro")', () => {
     })
   })
 })
+
+// Carga de datos históricos — la restricción "no antes de hoy" vivía
+// ENTERAMENTE en ReservaForm.jsx (JS del cliente: un `if` en
+// handleSubmit + el atributo HTML `min` del input de fecha de entrada,
+// sólo al crear, no al editar) — nunca fue un CHECK de columna ni una
+// política de RLS. Por eso los tests de acá abajo, que hablan
+// directo con supabase-js salteándose el form por completo, YA
+// pasaban antes de sacar esa restricción — no detectan el bug en sí
+// (eso sólo se puede probar manejando el form real, ver el spec E2E
+// nuevo), pero sirven como red de regresión: confirman que la base
+// nunca tuvo, y sigue sin tener, ningún candado propio contra fechas
+// pasadas — y que el candado real (período ya cerrado) sigue
+// funcionando exactamente igual para una reserva/movimiento con fecha
+// histórica.
+describe('Carga de datos históricos — sin restricción de "hoy o después"', () => {
+  it('una reserva con fecha de entrada bien en el pasado se puede insertar sin problema', async () => {
+    const { data, error } = await client.from('reservas').insert({
+      complejo_id: mimmoId, codigo: autotestCodigo(), nombre_apellido: autotestNombre('Historica reserva'),
+      cabana: 'Cabaña Mimmo I', pax: 2, fecha_entrada: '2020-01-10', fecha_salida: '2020-01-12', monto_total: 1000,
+      estado: 'Finalizada',
+    }).select().single()
+    expect(error).toBeNull()
+    expect(data).toBeTruthy()
+    cleanup.reservas.push(data.id)
+  })
+
+  it('un movimiento_caja con fecha bien en el pasado se puede insertar sin problema', async () => {
+    const { data, error } = await client.from('movimientos_caja').insert({
+      complejo_id: mimmoId, fecha: '2020-01-10', tipo: 'ingreso', categoria: 'alquiler',
+      detalle: autotestDetalle('Historico movimiento'), origen: 'manual',
+      monto_depositos: 100, monto_efectivo: 0, monto_otros: 0,
+    }).select().single()
+    expect(error).toBeNull()
+    expect(data).toBeTruthy()
+    cleanup.movimientos.push(data.id)
+  })
+
+  it('current/future dates siguen funcionando sin cambios (sin regresión)', async () => {
+    const { data: reservaFutura, error: errReserva } = await client.from('reservas').insert({
+      complejo_id: mimmoId, codigo: autotestCodigo(), nombre_apellido: autotestNombre('Futura reserva'),
+      cabana: 'Cabaña Mimmo II', pax: 2, fecha_entrada: '2027-08-10', fecha_salida: '2027-08-12', monto_total: 1000,
+    }).select().single()
+    expect(errReserva).toBeNull()
+    cleanup.reservas.push(reservaFutura.id)
+
+    const { data: movFuturo, error: errMov } = await client.from('movimientos_caja').insert({
+      complejo_id: mimmoId, fecha: '2027-08-10', tipo: 'ingreso', categoria: 'alquiler',
+      detalle: autotestDetalle('Futuro movimiento'), origen: 'manual',
+      monto_depositos: 100, monto_efectivo: 0, monto_otros: 0,
+    }).select().single()
+    expect(errMov).toBeNull()
+    cleanup.movimientos.push(movFuturo.id)
+  })
+
+  describe('el candado de período cerrado sigue vivo para una fecha histórica (no se saltea nada al sacar la restricción de "hoy")', () => {
+    let cierreHistoricoId
+    const desde = '2019-06-01'
+    const hasta = '2019-06-30'
+    const fechaBloqueada = '2019-06-15'
+
+    beforeAll(async () => {
+      const { data, error } = await client.from('cierres_caja').insert({
+        complejo_id: mimmoId, nombre: autotestCierreNombre('Candado historico'),
+        fecha_desde: desde, fecha_hasta: hasta, inicio_manual: 0,
+      }).select().single()
+      expect(error).toBeNull()
+      cierreHistoricoId = data.id
+    })
+
+    afterAll(async () => {
+      if (cierreHistoricoId) await client.from('cierres_caja').delete().eq('id', cierreHistoricoId)
+    })
+
+    it('fechaEstaCerrada (pre-flight real de ReservaForm.jsx/ReservaPago.jsx) sigue detectando el bloqueo para una fecha histórica ya cerrada', async () => {
+      const { cierre, error } = await fechaEstaCerrada(client, mimmoId, fechaBloqueada)
+      expect(error).toBeNull()
+      expect(cierre?.id).toBe(cierreHistoricoId)
+    })
+
+    it('cierreQueContiene también lo detecta contra la lista ya cargada (guardia de CajaTemporada.jsx)', async () => {
+      const { data: cierres } = await client.from('cierres_caja').select('*').eq('complejo_id', mimmoId)
+      const bloqueante = cierreQueContiene(cierres, fechaBloqueada)
+      expect(bloqueante?.id).toBe(cierreHistoricoId)
+    })
+
+    it('una fecha histórica FUERA de ese rango cerrado no queda bloqueada', async () => {
+      const { cierre, error } = await fechaEstaCerrada(client, mimmoId, '2019-07-01')
+      expect(error).toBeNull()
+      expect(cierre).toBeNull()
+    })
+  })
+})

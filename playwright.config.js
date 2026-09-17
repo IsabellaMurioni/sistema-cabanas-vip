@@ -37,7 +37,7 @@ export default defineConfig({
     {
       // El resto reutiliza la sesión ya guardada por global-setup.js.
       name: 'authenticated',
-      testMatch: /(mimmo|non-vip-smoke)\.spec\.js/,
+      testMatch: /(mimmo|non-vip-smoke|fechas-historicas)\.spec\.js/,
       use: { ...devices['Desktop Chrome'], storageState: 'tests/e2e/.auth/full-access.json' },
     },
   ],
