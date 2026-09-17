@@ -1,35 +1,9 @@
 // Código real importado de src/pages/Disponibilidad.jsx — sin mocks,
-// sin DOM. La banda de meses (MonthHeaders) y el color por celda de
-// día (DayHeaders/TimelineRow) son sólo JSX fino sobre estas dos
-// funciones puras — lo que hay que probar es la lógica real de
-// agrupación/color, no re-renderizar el componente.
+// sin DOM. La banda de meses (MonthHeaders) es sólo JSX fino sobre
+// esta función pura — lo que hay que probar es la lógica real de
+// agrupación, no re-renderizar el componente.
 import { describe, it, expect } from 'vitest'
-import { MESES_COLOR, colorDelMes, agruparDiasPorMes } from '../../src/pages/Disponibilidad'
-
-describe('MESES_COLOR / colorDelMes (código real)', () => {
-  it('tiene exactamente 12 colores, uno por mes', () => {
-    expect(MESES_COLOR).toHaveLength(12)
-  })
-
-  it('cada color es un hex válido y distinto de los demás (12 colores únicos)', () => {
-    MESES_COLOR.forEach((c) => expect(c).toMatch(/^#[0-9A-Fa-f]{6}$/))
-    expect(new Set(MESES_COLOR).size).toBe(12)
-  })
-
-  it('el mismo índice de mes siempre devuelve el mismo color (no aleatorio)', () => {
-    expect(colorDelMes(8)).toBe(colorDelMes(8))
-    expect(colorDelMes(8)).toBe(MESES_COLOR[8])
-  })
-
-  it('meses distintos tienen colores distintos', () => {
-    expect(colorDelMes(0)).not.toBe(colorDelMes(1))
-  })
-
-  it('se normaliza si el índice viene fuera de [0,11] (no debería pasar en la práctica, pero no explota)', () => {
-    expect(colorDelMes(12)).toBe(MESES_COLOR[0])
-    expect(colorDelMes(-1)).toBe(MESES_COLOR[11])
-  })
-})
+import { agruparDiasPorMes } from '../../src/pages/Disponibilidad'
 
 describe('agruparDiasPorMes (código real)', () => {
   it('un rango dentro de un solo mes da un único tramo con todos los días', () => {

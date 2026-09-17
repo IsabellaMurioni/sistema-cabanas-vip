@@ -10,8 +10,8 @@ import {
 import { es } from 'date-fns/locale'
 
 // Este archivo ya exportaba sólo el componente default; ahora también
-// exporta MESES_COLOR/colorDelMes/agruparDiasPorMes para que los tests
-// unitarios (tests/unit/) puedan ejercitar la lógica real en vez de
+// exporta agruparDiasPorMes para que los tests unitarios (tests/unit/)
+// puedan ejercitar la lógica real en vez de
 // reimplementarla. Rompe el supuesto de Fast Refresh de "un archivo de
 // componente sólo exporta componentes" — sin impacto en runtime/
 // producción, sólo hace que Vite recargue toda la página en vez de
@@ -25,45 +25,6 @@ const ESTADO_STYLES = {
   Confirmada: 'badge badge-confirmada',
   Finalizada: 'badge badge-finalizada',
   Cancelada:  'badge badge-cancelada',
-}
-
-// ── Colores por mes calendario ───────────────────────────────
-// Paleta fija de 12 colores pastel/muted, uno por mes (índice 0=Enero
-// … 11=Diciembre) — el MISMO mes siempre pinta igual, en cualquier año
-// y en cualquier complejo (nada acá depende de complejoActivo). Para
-// cambiar los colores más adelante (ej. si Lorena pide otra paleta),
-// esta constante es el único lugar a tocar — nada más en el archivo
-// conoce estos valores hardcodeados.
-//
-// El orden NO sigue la rueda de color en línea recta (rojo→naranja→
-// amarillo→...) a propósito: probado en vivo, dos meses consecutivos
-// con matices vecinos en la rueda (ej. lavanda→violeta) casi no se
-// distinguían a simple vista en la franja de días. Los 12 tonos están
-// espaciados 30° en la rueda pero reordenados salteando de a 150°
-// (HSL 55%/87%: pastel/suave, con suficiente saturación para que se
-// note la diferencia) — así CUALQUIER par de meses consecutivos queda
-// a 150° o 210° de distancia, nunca vecino en la rueda.
-export const MESES_COLOR = [
-  '#F0CCCC', // Enero      — rosado suave      (H 0°)
-  '#CCF0DE', // Febrero    — verde agua suave  (H 150°)
-  '#F0CCF0', // Marzo      — magenta suave     (H 300°)
-  '#DEF0CC', // Abril      — lima suave        (H 90°)
-  '#CCCCF0', // Mayo       — lavanda suave     (H 240°)
-  '#F0DECC', // Junio      — durazno suave     (H 30°)
-  '#CCF0F0', // Julio      — celeste suave     (H 180°)
-  '#F0CCDE', // Agosto     — rosa frambuesa suave (H 330°)
-  '#CCF0CC', // Septiembre — verde suave       (H 120°)
-  '#DECCF0', // Octubre    — violeta suave     (H 270°)
-  '#F0F0CC', // Noviembre  — amarillo suave    (H 60°)
-  '#CCDEF0', // Diciembre  — azul suave        (H 210°)
-]
-
-// `monthIndex` en base 0 (igual que Date#getMonth()) — normalizado con
-// el doble módulo para no romper si alguna vez se le pasa un índice
-// fuera de [0,11] (nunca debería pasar en la práctica, pero evita un
-// undefined silencioso en vez de fallar feo).
-export function colorDelMes(monthIndex) {
-  return MESES_COLOR[((monthIndex % 12) + 12) % 12]
 }
 
 // Agrupa un rango de `numDays` días consecutivos a partir de
@@ -239,6 +200,8 @@ function DayHeaders({ startDate, numDays }) {
     <div style={{ display: 'flex', width: numDays * DAY_W, minWidth: numDays * DAY_W, flexShrink: 0, borderBottom: '1px solid #f0e6d8', backgroundColor: 'var(--color-secundario)' }}>
       {Array.from({ length: numDays }, (_, i) => {
         const day = addDays(startDate, i)
+        const dow = getDay(day)
+        const isWeekend = dow === 0 || dow === 6
         const isToday = isSameDay(day, today)
         return (
           <div
@@ -247,7 +210,7 @@ function DayHeaders({ startDate, numDays }) {
               width: DAY_W, minWidth: DAY_W, flexShrink: 0,
               textAlign: 'center', padding: '6px 0',
               borderRight: '1px solid #f0e6d8',
-              backgroundColor: isToday ? '#fff7ed' : colorDelMes(day.getMonth()),
+              backgroundColor: isToday ? '#fff7ed' : isWeekend ? '#fff4e8' : 'transparent',
               userSelect: 'none',
             }}
           >
@@ -288,6 +251,8 @@ function TimelineRow({ cabana, reservas, startDate, endDate, height = 40, onRese
       <div style={{ position: 'absolute', top: 0, left: 0, width: totalW, height: '100%', display: 'flex' }}>
         {Array.from({ length: numDays }, (_, i) => {
           const day = addDays(startDate, i)
+          const dow = getDay(day)
+          const isWeekend = dow === 0 || dow === 6
           const isToday = isSameDay(day, today)
           return (
             <div
@@ -295,7 +260,7 @@ function TimelineRow({ cabana, reservas, startDate, endDate, height = 40, onRese
               style={{
                 width: DAY_W, minWidth: DAY_W, flexShrink: 0, height: '100%',
                 borderRight: '1px solid #f0e6d8',
-                backgroundColor: isToday ? '#fff7ed' : colorDelMes(day.getMonth()),
+                backgroundColor: isToday ? '#fff7ed' : isWeekend ? '#fff4e8' : '#fff',
               }}
             />
           )
