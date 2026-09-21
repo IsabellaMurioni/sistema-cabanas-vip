@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { format, parseISO } from 'date-fns'
+import { format, parseISO, startOfMonth } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { useComplejo } from '../context/ComplejoContext'
+import DateRangePicker from '../components/DateRangePicker'
 
 // Este archivo exporta fetchReservasPorComplejo además del componente
 // default, para que los tests de integración (tests/integration/)
@@ -28,6 +29,22 @@ const MESES = [
   'Enero','Febrero','Marzo','Abril','Mayo','Junio',
   'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre',
 ]
+
+// Antes, la tarjeta "facturado" filtraba por `r.mes` (un nombre de mes
+// guardado como string en cada reserva, sin año) contra el mes calendario
+// ACTUAL — sin selector, sin año, y mezclando reservas de años distintos
+// que caen en el mismo mes (ej. septiembre 2025 y septiembre 2026 se
+// sumaban juntas). Esta función arma el mismo total pero a partir de un
+// rango desde/hasta arbitrario sobre `fecha_entrada` (fecha real,
+// comparación de string ISO — mismo patrón que recapPorRango en
+// CajaTemporada.jsx e inRange en Ganancias.jsx, sin ambigüedad de
+// timezone), así puede ir tan atrás como haya datos, no sólo "el mes
+// actual, cualquier año".
+export function facturadoEnRango(reservas, desdeISO, hastaISO) {
+  return reservas
+    .filter(r => r.fecha_entrada && r.fecha_entrada >= desdeISO && r.fecha_entrada <= hastaISO)
+    .reduce((s, r) => s + (Number(r.monto_total) || 0), 0)
+}
 
 const estadoBadge = {
   Pendiente:  'badge badge-pendiente',
@@ -72,18 +89,44 @@ export default function Reservas() {
   const [filtroMes, setFiltroMes]     = useState('')
   const [filtroEstado, setFiltroEstado] = useState('')
 
-  const fetchReservas = async () => {
+  // Rango de la tarjeta "Facturado" — independiente del filtro de mes de
+  // abajo (ese filtra qué FILAS se listan; esto sólo decide qué reservas
+  // entran en el total facturado). Por defecto, lo que va del mes actual
+  // (mismo arranque que antes tenía la tarjeta), pero acá se puede mover
+  // a cualquier rango pasado.
+  const [factDesde, setFactDesde] = useState(() => startOfMonth(new Date()))
+  const [factHasta, setFactHasta] = useState(() => new Date())
+
+  // `isStale` (opcional) sólo lo pasa el useEffect de abajo — ver el
+  // comentario ahí para el motivo. Las llamadas manuales (handleFinalizar/
+  // handleEliminar) no lo necesitan: son un refetch síncrono en respuesta
+  // a una acción del usuario, no compiten con ningún otro fetch en vuelo.
+  const fetchReservas = async (isStale = () => false) => {
     if (!complejoActivo) {
       setReservas([])
       return
     }
     setLoading(true)
     const { data } = await fetchReservasPorComplejo(supabase, complejoActivo.id)
+    if (isStale()) return
     setReservas(data || [])
     setLoading(false)
   }
 
-  useEffect(() => { fetchReservas() }, [complejoActivo?.id])
+  // Guard contra respuesta obsoleta (mismo patrón que ComplejoContext.jsx
+  // y Ganancias.jsx): complejoActivo pasa brevemente por un valor default
+  // (el primer complejo con membresía) antes de que Layout.jsx lo corrija
+  // al slug real de la URL — este efecto se dispara dos veces seguidas al
+  // entrar directo a la URL de cualquier complejo que no sea ese default.
+  // Sin este guard, si el fetch del complejo viejo (default) resuelve
+  // DESPUÉS del fetch del complejo corregido, pisa la lista ya correcta
+  // con las reservas de otro complejo — bug real confirmado en vivo
+  // (entrar directo a /mimmo/reservas mostraba reservas de Cabañas VIP).
+  useEffect(() => {
+    let cancelado = false
+    fetchReservas(() => cancelado)
+    return () => { cancelado = true }
+  }, [complejoActivo?.id])
 
   const handleFinalizar = async (id) => {
     if (!confirm('¿Marcar esta reserva como Finalizada?')) return
@@ -119,16 +162,15 @@ export default function Reservas() {
   })
 
   // Stat cards
-  const ahora  = new Date()
-  const mesAct = MESES[ahora.getMonth()]
+  const factDesdeISO = format(factDesde, 'yyyy-MM-dd')
+  const factHastaISO = format(factHasta, 'yyyy-MM-dd')
   const stats = useMemo(() => ({
     total:      reservas.length,
     pendientes: reservas.filter(r => r.estado === 'Pendiente').length,
     confirmadas:reservas.filter(r => r.estado === 'Confirmada').length,
-    mesActual:  reservas
-      .filter(r => r.mes === mesAct)
-      .reduce((s, r) => s + (Number(r.monto_total) || 0), 0),
-  }), [reservas, mesAct])
+    facturado:  facturadoEnRango(reservas, factDesdeISO, factHastaISO),
+  }), [reservas, factDesdeISO, factHastaISO])
+  const facturadoLabel = `Facturado (${format(factDesde, 'd MMM', { locale: es })} — ${format(factHasta, 'd MMM yyyy', { locale: es })})`
 
   return (
     <div className="fade-in">
@@ -143,13 +185,23 @@ export default function Reservas() {
         </button>
       </div>
 
+      {/* Rango de la tarjeta "Facturado" — no afecta la lista de abajo */}
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        <p className="text-xs font-medium text-[#888] mr-1">Facturado entre:</p>
+        <DateRangePicker
+          startDate={factDesde}
+          endDate={factHasta}
+          onChange={({ startDate, endDate }) => { setFactDesde(startDate); setFactHasta(endDate) }}
+        />
+      </div>
+
       {/* Stat cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-7">
         {[
           { label: 'Total reservas',  value: stats.total },
           { label: 'Pendientes',      value: stats.pendientes },
           { label: 'Confirmadas',     value: stats.confirmadas },
-          { label: `${mesAct} — facturado`, value: `$${stats.mesActual.toLocaleString('es-AR')}` },
+          { label: facturadoLabel, value: `$${stats.facturado.toLocaleString('es-AR')}` },
         ].map((s, i) => (
           <div key={i} className="card">
             <p className="section-label mb-2">{s.label}</p>

@@ -252,7 +252,7 @@ function SilviaCaja({ reservas }) {
   const [anio, setAnio]       = useState(NOW_YEAR)
   const [tipo, setTipo]       = useState('todos')
 
-  const load = async () => {
+  const load = async (isStale = () => false) => {
     if (!complejoActivo) {
       setRows([])
       return
@@ -263,10 +263,19 @@ function SilviaCaja({ reservas }) {
       .eq('complejo_id', complejoActivo.id)
       .order('fecha', { ascending: true })
       .order('created_at', { ascending: true })
+    if (isStale()) return
     setRows(data || [])
     setLoading(false)
   }
-  useEffect(() => { load() }, [complejoActivo?.id])
+  // Guard contra respuesta obsoleta — mismo patrón/motivo que
+  // Ganancias.jsx (complejoActivo pasa por un default antes de que
+  // Layout.jsx lo corrija al slug de la URL; sin esto, el fetch del
+  // complejo viejo puede resolver después y pisar los datos correctos).
+  useEffect(() => {
+    let cancelado = false
+    load(() => cancelado)
+    return () => { cancelado = true }
+  }, [complejoActivo?.id])
 
   const withTotals = useMemo(() => {
     let ps = 0
@@ -552,7 +561,7 @@ function JuliCaja() {
   const [anio, setAnio]       = useState(NOW_YEAR)
   const [vista, setVista]     = useState('main')
 
-  const load = async () => {
+  const load = async (isStale = () => false) => {
     if (!complejoActivo) {
       setRows([])
       return
@@ -561,10 +570,16 @@ function JuliCaja() {
     const { data } = await supabase.from('caja_juli').select('*')
       .eq('complejo_id', complejoActivo.id)
       .order('fecha', { ascending: true }).order('created_at', { ascending: true })
+    if (isStale()) return
     setRows(data || [])
     setLoading(false)
   }
-  useEffect(() => { load() }, [complejoActivo?.id])
+  // Guard contra respuesta obsoleta — ver comentario en SilviaCaja arriba.
+  useEffect(() => {
+    let cancelado = false
+    load(() => cancelado)
+    return () => { cancelado = true }
+  }, [complejoActivo?.id])
 
   const withTotals = useMemo(() => {
     let total = 0
@@ -861,7 +876,7 @@ function CajaTransfer({ tabla, titulo, reservas }) {
   const [mes, setMes]         = useState(new Date().getMonth())
   const [anio, setAnio]       = useState(NOW_YEAR)
 
-  const load = async () => {
+  const load = async (isStale = () => false) => {
     if (!complejoActivo) {
       setRows([])
       return
@@ -871,10 +886,16 @@ function CajaTransfer({ tabla, titulo, reservas }) {
       .eq('complejo_id', complejoActivo.id)
       .order('fecha', { ascending: true })
       .order('created_at', { ascending: true })
+    if (isStale()) return
     setRows(data || [])
     setLoading(false)
   }
-  useEffect(() => { load() }, [tabla, complejoActivo?.id])
+  // Guard contra respuesta obsoleta — ver comentario en SilviaCaja arriba.
+  useEffect(() => {
+    let cancelado = false
+    load(() => cancelado)
+    return () => { cancelado = true }
+  }, [tabla, complejoActivo?.id])
 
   const withTotals = useMemo(() => {
     let total = 0
@@ -1119,18 +1140,24 @@ function CajaVIP() {
   const tabsVisibles = tabsCajaVipVisibles(rolActivo)
   const soloSilvia = tabsVisibles.length === 1
 
+  // Guard contra respuesta obsoleta — ver comentario en SilviaCaja arriba.
   useEffect(() => {
     if (!complejoActivo) {
       setReservas([])
       return
     }
+    let cancelado = false
     supabase
       .from('reservas')
       .select('id, codigo, nombre_apellido, monto_total, sena1_monto, sena2_monto, pago_cabana_monto, estado')
       .eq('complejo_id', complejoActivo.id)
       .neq('estado', 'Cancelada')
       .order('codigo', { ascending: false })
-      .then(({ data }) => setReservas(data || []))
+      .then(({ data }) => {
+        if (cancelado) return
+        setReservas(data || [])
+      })
+    return () => { cancelado = true }
   }, [complejoActivo?.id])
 
   return (

@@ -7,7 +7,8 @@
 // período, sumar columnas) corre con las funciones reales importadas,
 // así que un bug ahí SÍ se detecta.
 import { describe, it, expect } from 'vitest'
-import { sumField, inPeriod, movRowTotal, ars, pct } from '../../src/pages/Ganancias'
+import { sumField, inPeriod, inRange, movRowTotal, ars, pct } from '../../src/pages/Ganancias'
+import { resumenMovimientos } from '../../src/pages/CajaTemporada'
 
 describe('Ganancias VIP — Ingresos ARS / Gastos totales (bug de caja_banco/caja_mercado_pago)', () => {
   const mes = 7 // Agosto (0-indexado)
@@ -196,5 +197,97 @@ describe('sumField / ars / pct — helpers de suma y formato (código real)', ()
   })
   it('pct con total 0 devuelve "0%" sin dividir por cero', () => {
     expect(pct(10, 0)).toBe('0%')
+  })
+})
+
+// Ganancias.jsx antes sólo podía filtrar por "un mes puntual" o "un año
+// entero" (inPeriod) — no había forma de pedir un rango arbitrario como
+// "1 de marzo a hoy". `inRange` es la función nueva que lo permite
+// (comparación de string ISO, mismo patrón que recapPorRango en
+// CajaTemporada.jsx). Estos tests prueban específicamente lo que
+// inPeriod NO podía hacer: un rango que cruza varios meses y/o años.
+describe('inRange — filtro de rango de fechas arbitrario (código real, feature nueva)', () => {
+  it('fecha dentro del rango → true', () => {
+    expect(inRange('2026-05-15', '2026-03-01', '2026-09-21')).toBe(true)
+  })
+  it('fecha en los bordes del rango (inclusive) → true', () => {
+    expect(inRange('2026-03-01', '2026-03-01', '2026-09-21')).toBe(true)
+    expect(inRange('2026-09-21', '2026-03-01', '2026-09-21')).toBe(true)
+  })
+  it('fecha fuera del rango → false', () => {
+    expect(inRange('2026-02-28', '2026-03-01', '2026-09-21')).toBe(false)
+    expect(inRange('2026-09-22', '2026-03-01', '2026-09-21')).toBe(false)
+  })
+  it('rango que cruza un año calendario (dic 2025 → feb 2026) — inPeriod no puede expresar esto en una sola llamada', () => {
+    expect(inRange('2025-12-20', '2025-12-01', '2026-02-28')).toBe(true)
+    expect(inRange('2026-01-15', '2025-12-01', '2026-02-28')).toBe(true)
+    expect(inRange('2026-02-28', '2025-12-01', '2026-02-28')).toBe(true)
+    expect(inRange('2026-03-01', '2025-12-01', '2026-02-28')).toBe(false)
+  })
+  it('fecha vacía/null → false, no explota', () => {
+    expect(inRange(null, '2026-01-01', '2026-12-31')).toBe(false)
+    expect(inRange('', '2026-01-01', '2026-12-31')).toBe(false)
+  })
+})
+
+// Reproduce el pipeline real que arma Ganancias.jsx para NO-VIP en modo
+// "rango personalizado": filtrar movimientos_caja con inRange y pasarlos
+// por resumenMovimientos (resumenPeriodoMovCaja, ver src/pages/
+// Ganancias.jsx) — la MISMA función que ya usa Caja Temporada, no una
+// reimplementación. El escenario cruza 3 meses (marzo→mayo), algo que el
+// viejo selector de mes/año no podía pedir en una sola vista.
+describe('Ganancias NO-VIP — rango personalizado vía resumenMovimientos (feature nueva)', () => {
+  const movs = [
+    { fecha: '2026-02-20', tipo: 'ingreso', monto_depositos: 9999, monto_efectivo: 0, monto_otros: 0 }, // antes del rango
+    { fecha: '2026-03-01', tipo: 'ingreso', monto_depositos: 1000, monto_efectivo: 0, monto_otros: 0 },
+    { fecha: '2026-04-15', tipo: 'egreso',  monto_depositos: 0,    monto_efectivo: 300, monto_otros: 0 },
+    { fecha: '2026-05-10', tipo: 'ingreso', monto_depositos: 0,    monto_efectivo: 500, monto_otros: 0 },
+    { fecha: '2026-06-01', tipo: 'ingreso', monto_depositos: 7777, monto_efectivo: 0, monto_otros: 0 }, // después del rango
+  ]
+
+  it('suma ventas/gastos/ganancia de marzo a mayo, cruzando 3 meses distintos', () => {
+    const enRango = movs.filter((m) => inRange(m.fecha, '2026-03-01', '2026-05-31'))
+    const resumen = resumenMovimientos(enRango)
+    expect(resumen.ventas).toBe(1500)   // 1000 (marzo) + 500 (mayo)
+    expect(resumen.gastos).toBe(300)    // abril
+    expect(resumen.ganancia).toBe(1200) // 1500 - 300
+  })
+
+  it('rango vacío (sin movimientos que matcheen) → todo en 0, no explota', () => {
+    const resumen = resumenMovimientos(movs.filter((m) => inRange(m.fecha, '2027-01-01', '2027-01-31')))
+    expect(resumen).toEqual({
+      prestamos: 0, ventas: 0, ingresoTotal: 0, devoluciones: 0, gastos: 0, retiros: 0, ganancia: 0,
+    })
+  })
+})
+
+// Mismo tipo de escenario para VIP: la fórmula ya existente (Silvia +
+// Banco + Mercado Pago) se reutiliza tal cual, sólo cambia el filtro de
+// fecha que arma fSilvia/fBanco/fMp — reproducido acá con las mismas
+// expresiones literales que usa Ganancias.jsx.
+describe('Ganancias VIP — rango personalizado, misma fórmula ya existente (feature nueva)', () => {
+  const silvia = [
+    { fecha: '2026-03-05', ingreso_pesos: 2000, ingreso_juli: 0, gasto: 0 },
+    { fecha: '2026-08-01', ingreso_pesos: 9999, ingreso_juli: 0, gasto: 0 }, // después del rango
+  ]
+  const banco = [
+    { fecha: '2026-04-10', ingreso: 3000, egreso: 500 },
+  ]
+  const mp = [
+    { fecha: '2026-05-20', ingreso: 1000, egreso: 0 },
+  ]
+
+  it('ingARS/gastoTotal de un rango marzo-mayo, cruzando 3 meses', () => {
+    const fSilvia = silvia.filter((r) => inRange(r.fecha, '2026-03-01', '2026-05-31'))
+    const fBanco  = banco.filter((r) => inRange(r.fecha, '2026-03-01', '2026-05-31'))
+    const fMp     = mp.filter((r) => inRange(r.fecha, '2026-03-01', '2026-05-31'))
+
+    const ingARS = sumField(fSilvia, 'ingreso_pesos') + sumField(fSilvia, 'ingreso_juli') +
+      sumField(fBanco, 'ingreso') + sumField(fMp, 'ingreso')
+    const gastoTotal = sumField(fSilvia, 'gasto') + sumField(fBanco, 'egreso') + sumField(fMp, 'egreso')
+
+    expect(ingARS).toBe(6000)     // 2000 (silvia marzo) + 3000 (banco abril) + 1000 (mp mayo)
+    expect(gastoTotal).toBe(500)  // egreso de banco en abril
+    expect(ingARS - gastoTotal).toBe(5500)
   })
 })

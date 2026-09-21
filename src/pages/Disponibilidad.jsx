@@ -35,6 +35,16 @@ const ROW_H_SINGLE = 80
 const TARGET_MIN_H_TODAS = 576
 const TARGET_MIN_H_SINGLE = 960
 
+// La grilla (bandas de mes/día + filas) vive en su propio contenedor con
+// scroll (ambos ejes) acotado a esta altura — necesario para que
+// `position: sticky` funcione: un ancestro con overflow no-visible que
+// NUNCA scrollea de verdad (alto automático, sin tope) igual cuenta como
+// "contenedor de scroll" para sticky, y entonces el elemento sticky queda
+// permanentemente empujado por su `top`, en vez de pegarse sólo al
+// scrollear. Con un `maxHeight` real, el contenedor sí scrollea y sticky
+// se comporta como se espera.
+const GRID_MAX_H = 'calc(100vh - 280px)'
+
 const ESTADO_STYLES = {
   Pendiente:  'badge badge-pendiente',
   Confirmada: 'badge badge-confirmada',
@@ -186,7 +196,10 @@ function CalendarPicker({ value, onChange, label }) {
 function MonthHeaders({ startDate, numDays }) {
   const tramos = agruparDiasPorMes(startDate, numDays)
   return (
-    <div style={{ display: 'flex', width: numDays * DAY_W, minWidth: numDays * DAY_W, flexShrink: 0 }}>
+    <div style={{
+      display: 'flex', width: numDays * DAY_W, minWidth: numDays * DAY_W, flexShrink: 0,
+      position: 'sticky', top: 0, zIndex: 21,
+    }}>
       {tramos.map((tramo, i) => (
         <div
           key={`${tramo.anio}-${tramo.mes}-${i}`}
@@ -212,7 +225,11 @@ function MonthHeaders({ startDate, numDays }) {
 function DayHeaders({ startDate, numDays }) {
   const today = startOfToday()
   return (
-    <div style={{ display: 'flex', width: numDays * DAY_W, minWidth: numDays * DAY_W, flexShrink: 0, borderBottom: '1px solid #f0e6d8', backgroundColor: 'var(--color-secundario)' }}>
+    <div style={{
+      display: 'flex', width: numDays * DAY_W, minWidth: numDays * DAY_W, flexShrink: 0,
+      borderBottom: '1px solid #f0e6d8', backgroundColor: 'var(--color-secundario)',
+      position: 'sticky', top: 22, zIndex: 21,
+    }}>
       {Array.from({ length: numDays }, (_, i) => {
         const day = addDays(startDate, i)
         const dow = getDay(day)
@@ -495,21 +512,28 @@ export default function Disponibilidad() {
 
   const numDays = differenceInDays(endDate, startDate) + 1
 
+  // Guard contra respuesta obsoleta — mismo patrón/motivo que
+  // Ganancias.jsx (complejoActivo pasa por un default antes de que
+  // Layout.jsx lo corrija al slug de la URL; sin esto, el fetch del
+  // complejo viejo puede resolver después y pisar los datos correctos).
   useEffect(() => {
     if (!complejoActivo) {
       setReservas([])
       return
     }
     setLoading(true)
+    let cancelado = false
     supabase
       .from('reservas')
       .select('id, codigo, nombre_apellido, cabana, fecha_entrada, fecha_salida, estado, pax, noches, monto_total, sena1_monto, sena2_monto, pago_cabana_monto, celular')
       .eq('complejo_id', complejoActivo.id)
       .neq('estado', 'Cancelada')
       .then(({ data }) => {
+        if (cancelado) return
         setReservas(data || [])
         setLoading(false)
       })
+    return () => { cancelado = true }
   }, [complejoActivo?.id])
 
   const cabanaStatus = useMemo(() => {
@@ -603,60 +627,72 @@ export default function Disponibilidad() {
             </span>
           </div>
 
-          {/* Two-column grid: fixed labels + scrollable timeline */}
-          <div style={{ display: 'flex', overflow: 'hidden' }}>
-            {/* Left: cabin names (fixed, no scroll) */}
-            <div style={{ width: 136, minWidth: 136, flexShrink: 0, borderRight: '1px solid #f0e6d8' }}>
-              {/* Header spacer — matches MonthHeaders + DayHeaders height (22px + 44px) */}
-              <div style={{ height: 66, borderBottom: '1px solid #f0e6d8', backgroundColor: 'var(--color-secundario)' }} />
-              {/* Cabin rows, grouped by seccion.grupo when present */}
-              {cabanasPorGrupo.map((seccion, si) => (
-                <Fragment key={seccion.grupo || `sin-grupo-${si}`}>
-                  {seccion.grupo && (
-                    <div style={{
-                      height: 24, display: 'flex', alignItems: 'center',
-                      paddingLeft: 10, fontSize: 10, fontWeight: 700,
-                      color: '#888', textTransform: 'uppercase', letterSpacing: '0.04em',
-                      backgroundColor: '#f7f3ee', borderBottom: '1px solid #f0e6d8',
-                    }}>
-                      {seccion.grupo}
-                    </div>
-                  )}
-                  {seccion.cabanas.map((cabana) => {
-                    const st = cabanaStatus[cabana]
-                    const ci = CABANAS.indexOf(cabana)
-                    return (
-                      <div
-                        key={cabana}
-                        onClick={() => { setSelectedCabana(cabana); setShowAll(false) }}
-                        style={{
-                          height: rowH, display: 'flex', alignItems: 'center',
-                          gap: 8, paddingLeft: 10, paddingRight: 8,
-                          borderBottom: '1px solid #f0e6d8',
-                          borderLeft: `3px solid ${getCabanaColor(cabana)}`,
-                          backgroundColor: ci % 2 === 0 ? '#fff' : 'rgba(254,231,239,0.35)',
-                          cursor: 'pointer', transition: 'background 0.15s',
-                        }}
-                        onMouseEnter={e => e.currentTarget.style.backgroundColor = 'var(--color-secundario)'}
-                        onMouseLeave={e => e.currentTarget.style.backgroundColor = ci % 2 === 0 ? '#fff' : 'rgba(254,231,239,0.35)'}
-                      >
-                        <span style={{
-                          width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
-                          backgroundColor: st?.occupied ? getCabanaColor(cabana) : '#4ade80',
-                        }} />
-                        <span style={{ fontSize: 12, fontWeight: 600, color: '#333', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {cabana}
-                        </span>
+          {/* Grilla: un único contenedor con scroll horizontal + vertical.
+              La columna de nombres usa sticky-left (columna congelada) y
+              las bandas de mes/día usan sticky-top (fila congelada,
+              definido dentro de esos componentes) — ambas dentro de la
+              MISMA región de scroll para que no se desalineen entre sí ni
+              con el scroll horizontal. Ver comentario de GRID_MAX_H sobre
+              por qué el contenedor necesita una altura acotada real. */}
+          <div style={{ overflow: 'auto', maxHeight: GRID_MAX_H }}>
+            <div style={{ display: 'flex', width: 136 + numDays * DAY_W, minWidth: 136 + numDays * DAY_W }}>
+              {/* Left: cabin names — congelada horizontalmente */}
+              <div style={{ width: 136, minWidth: 136, flexShrink: 0, position: 'sticky', left: 0, zIndex: 22, borderRight: '1px solid #f0e6d8' }}>
+                {/* Header spacer — esquina congelada (sticky top, hereda el sticky-left del padre) */}
+                <div style={{
+                  height: 66, borderBottom: '1px solid #f0e6d8', backgroundColor: 'var(--color-secundario)',
+                  position: 'sticky', top: 0, zIndex: 23,
+                }} />
+                {/* Cabin rows, grouped by seccion.grupo when present */}
+                {cabanasPorGrupo.map((seccion, si) => (
+                  <Fragment key={seccion.grupo || `sin-grupo-${si}`}>
+                    {seccion.grupo && (
+                      <div style={{
+                        height: 24, display: 'flex', alignItems: 'center',
+                        paddingLeft: 10, fontSize: 10, fontWeight: 700,
+                        color: '#888', textTransform: 'uppercase', letterSpacing: '0.04em',
+                        backgroundColor: '#f7f3ee', borderBottom: '1px solid #f0e6d8',
+                      }}>
+                        {seccion.grupo}
                       </div>
-                    )
-                  })}
-                </Fragment>
-              ))}
-            </div>
+                    )}
+                    {seccion.cabanas.map((cabana) => {
+                      const st = cabanaStatus[cabana]
+                      const ci = CABANAS.indexOf(cabana)
+                      return (
+                        <div
+                          key={cabana}
+                          onClick={() => { setSelectedCabana(cabana); setShowAll(false) }}
+                          style={{
+                            height: rowH, display: 'flex', alignItems: 'center',
+                            gap: 8, paddingLeft: 10, paddingRight: 8,
+                            borderBottom: '1px solid #f0e6d8',
+                            borderLeft: `3px solid ${getCabanaColor(cabana)}`,
+                            // Opaco (no rgba): esta columna es sticky-left y las
+                            // celdas de día pasan "por detrás" al scrollear
+                            // horizontalmente — con transparencia se transparentarían.
+                            backgroundColor: ci % 2 === 0 ? '#fff' : '#fff7f9',
+                            cursor: 'pointer', transition: 'background 0.15s',
+                          }}
+                          onMouseEnter={e => e.currentTarget.style.backgroundColor = 'var(--color-secundario)'}
+                          onMouseLeave={e => e.currentTarget.style.backgroundColor = ci % 2 === 0 ? '#fff' : '#fff7f9'}
+                        >
+                          <span style={{
+                            width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
+                            backgroundColor: st?.occupied ? getCabanaColor(cabana) : '#4ade80',
+                          }} />
+                          <span style={{ fontSize: 12, fontWeight: 600, color: '#333', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {cabana}
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </Fragment>
+                ))}
+              </div>
 
-            {/* Right: scrollable timeline */}
-            <div style={{ flex: 1, overflowX: 'auto', overflowY: 'hidden' }}>
-              <div style={{ width: numDays * DAY_W, minWidth: numDays * DAY_W }}>
+              {/* Right: day columns */}
+              <div style={{ width: numDays * DAY_W, minWidth: numDays * DAY_W, flexShrink: 0 }}>
                 <MonthHeaders startDate={startDate} numDays={numDays} />
                 <DayHeaders startDate={startDate} numDays={numDays} />
                 {cabanasPorGrupo.map((seccion, si) => (
@@ -881,8 +917,10 @@ export default function Disponibilidad() {
                   </div>
                 </div>
 
-                {/* Timeline scrollable */}
-                <div style={{ overflowX: 'auto', flex: 1 }}>
+                {/* Timeline scrollable — mismo motivo que GRID_MAX_H en la
+                    vista "Ver todas": necesita altura acotada real para que
+                    el sticky de MonthHeaders/DayHeaders funcione. */}
+                <div style={{ overflow: 'auto', maxHeight: GRID_MAX_H }}>
                   <div style={{ width: numDays * DAY_W, minWidth: numDays * DAY_W }}>
                     <MonthHeaders startDate={startDate} numDays={numDays} />
                     <DayHeaders startDate={startDate} numDays={numDays} />

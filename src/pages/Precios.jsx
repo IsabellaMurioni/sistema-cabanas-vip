@@ -56,7 +56,12 @@ export default function Precios() {
   const [editNombre, setEditNombre] = useState({})
   const [editingNombre, setEditingNombre] = useState(null)
 
-  const fetchAll = async () => {
+  // `isStale` (opcional) sólo lo pasa el useEffect de abajo — las llamadas
+  // manuales tras guardar/crear/eliminar no lo necesitan (no compiten con
+  // ningún otro fetch en vuelo). Se chequea recién al final: ninguno de
+  // los dos awaits intermedios toca estado, así que un solo chequeo antes
+  // de los setState finales alcanza.
+  const fetchAll = async (isStale = () => false) => {
     if (!complejoActivo) {
       setPeriodos([])
       return
@@ -76,6 +81,7 @@ export default function Precios() {
           .in('periodo_id', periodoIds)
       : { data: [] }
 
+    if (isStale()) return
     const enriched = (pds || []).map((p) => ({
       ...p,
       precios: (precios || []).filter((x) => x.periodo_id === p.id),
@@ -84,7 +90,15 @@ export default function Precios() {
     setLoading(false)
   }
 
-  useEffect(() => { fetchAll() }, [complejoActivo?.id])
+  // Guard contra respuesta obsoleta — mismo patrón/motivo que
+  // Ganancias.jsx (complejoActivo pasa por un default antes de que
+  // Layout.jsx lo corrija al slug de la URL; sin esto, el fetch del
+  // complejo viejo puede resolver después y pisar los datos correctos).
+  useEffect(() => {
+    let cancelado = false
+    fetchAll(() => cancelado)
+    return () => { cancelado = true }
+  }, [complejoActivo?.id])
 
   const toggleExpand = (id) =>
     setExpanded((e) => ({ ...e, [id]: !e[id] }))

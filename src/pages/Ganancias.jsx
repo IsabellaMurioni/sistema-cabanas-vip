@@ -1,14 +1,15 @@
-﻿import { useEffect, useMemo, useState } from 'react'
+﻿import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { parseISO, getMonth, getYear, format, subMonths } from 'date-fns'
+import { parseISO, getMonth, getYear, format, subMonths, startOfMonth } from 'date-fns'
 import { es } from 'date-fns/locale'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   PieChart, Pie, Cell, LineChart, Line,
 } from 'recharts'
 import { useComplejo } from '../context/ComplejoContext'
-import { validarMontoMovimiento } from './CajaTemporada'
+import { validarMontoMovimiento, resumenMovimientos } from './CajaTemporada'
 import { fechaEstaCerrada, labelCierre } from '../lib/cierres'
+import DateRangePicker from '../components/DateRangePicker'
 
 // Este archivo exporta algunas funciones puras (ars/usd/pct/inPeriod/
 // sumField/movRowTotal) además del componente default, para que los
@@ -61,6 +62,16 @@ export function inPeriod(dateStr, mes, anio, allYear) {
   const d = parseISO(dateStr)
   if (allYear) return getYear(d) === anio
   return getMonth(d) === mes && getYear(d) === anio
+}
+
+// Comparación por string ISO ('yyyy-MM-dd'), no por Date — mismo patrón
+// que ya usa recapPorRango en CajaTemporada.jsx para evitar cualquier
+// ambigüedad de timezone al parsear. `desdeISO`/`hastaISO` los arma el
+// caller (con date-fns `format`) a partir de los Date que devuelve
+// DateRangePicker.
+export function inRange(dateStr, desdeISO, hastaISO) {
+  if (!dateStr) return false
+  return dateStr >= desdeISO && dateStr <= hastaISO
 }
 
 export function sumField(arr, field) {
@@ -187,6 +198,15 @@ export default function Ganancias() {
   const [activeTab, setActiveTab]     = useState('resumen')
   const [expandedRows, setExpandedRows] = useState(new Set())
 
+  // Rango de fechas personalizado ("desde"/"hasta" arbitrarios) — modo
+  // alternativo al de mes/año de arriba, no lo reemplaza. Sólo uno de
+  // los dos está activo a la vez (customRange decide cuál). Por defecto
+  // arranca en "lo que va del mes actual", pero desde acá se puede
+  // navegar a cualquier fecha con datos (sin piso artificial).
+  const [customRange, setCustomRange] = useState(false)
+  const [rangoDesde, setRangoDesde]   = useState(() => startOfMonth(new Date()))
+  const [rangoHasta, setRangoHasta]   = useState(() => new Date())
+
   // NO-VIP: form de "Nuevo retiro" (tab Retiros, más abajo).
   const [retiroMonto, setRetiroMonto]   = useState('')
   const [retiroMotivo, setRetiroMotivo] = useState('')
@@ -262,39 +282,51 @@ export default function Ganancias() {
   }, [complejoActivo?.id])
 
   // ── Filtered data for selected period ──────────────────────────────────────
+  // `matchesPeriod` es el único lugar que decide "mes/año o allYear" vs.
+  // "rango personalizado" — todo lo demás abajo sigue exactamente igual
+  // que antes, así que ninguna de las cuentas ya correctas (VIP inline,
+  // resumenMovimientos NO-VIP) tuvo que tocarse: sólo cambia QUÉ filas
+  // llegan filtradas, no cómo se agregan.
+  const rangoDesdeISO = format(rangoDesde, 'yyyy-MM-dd')
+  const rangoHastaISO = format(rangoHasta, 'yyyy-MM-dd')
+  const matchesPeriod = useCallback(
+    (dateStr) => customRange ? inRange(dateStr, rangoDesdeISO, rangoHastaISO) : inPeriod(dateStr, mes, anio, allYear),
+    [customRange, rangoDesdeISO, rangoHastaISO, mes, anio, allYear]
+  )
+
   const fReservas = useMemo(() =>
-    reservas.filter(r => inPeriod(r.fecha_entrada, mes, anio, allYear)),
-    [reservas, mes, anio, allYear]
+    reservas.filter(r => matchesPeriod(r.fecha_entrada)),
+    [reservas, matchesPeriod]
   )
   const fSilvia = useMemo(() =>
-    silvia.filter(r => inPeriod(r.fecha, mes, anio, allYear)),
-    [silvia, mes, anio, allYear]
+    silvia.filter(r => matchesPeriod(r.fecha)),
+    [silvia, matchesPeriod]
   )
   const fJuliMain = useMemo(() =>
-    juli.filter(r => r.seccion === 'main' && inPeriod(r.fecha, mes, anio, allYear)),
-    [juli, mes, anio, allYear]
+    juli.filter(r => r.seccion === 'main' && matchesPeriod(r.fecha)),
+    [juli, matchesPeriod]
   )
   const fJuliGastos = useMemo(() =>
-    juli.filter(r => r.seccion === 'gastos' && inPeriod(r.fecha, mes, anio, allYear)),
-    [juli, mes, anio, allYear]
+    juli.filter(r => r.seccion === 'gastos' && matchesPeriod(r.fecha)),
+    [juli, matchesPeriod]
   )
   const fBanco = useMemo(() =>
-    banco.filter(r => inPeriod(r.fecha, mes, anio, allYear)),
-    [banco, mes, anio, allYear]
+    banco.filter(r => matchesPeriod(r.fecha)),
+    [banco, matchesPeriod]
   )
   const fMp = useMemo(() =>
-    mp.filter(r => inPeriod(r.fecha, mes, anio, allYear)),
-    [mp, mes, anio, allYear]
+    mp.filter(r => matchesPeriod(r.fecha)),
+    [mp, matchesPeriod]
   )
 
   // ── NO-VIP: movimientos_caja filtrados al período seleccionado ─────────────
   const fMovIngreso = useMemo(() =>
-    movimientosCaja.filter(m => m.tipo === 'ingreso' && inPeriod(m.fecha, mes, anio, allYear)),
-    [movimientosCaja, mes, anio, allYear]
+    movimientosCaja.filter(m => m.tipo === 'ingreso' && matchesPeriod(m.fecha)),
+    [movimientosCaja, matchesPeriod]
   )
   const fMovEgreso = useMemo(() =>
-    movimientosCaja.filter(m => m.tipo === 'egreso' && inPeriod(m.fecha, mes, anio, allYear)),
-    [movimientosCaja, mes, anio, allYear]
+    movimientosCaja.filter(m => m.tipo === 'egreso' && matchesPeriod(m.fecha)),
+    [movimientosCaja, matchesPeriod]
   )
   // Retiros NO-VIP (tab Retiros, más abajo) — plata ya ganada que se
   // saca de la caja, tipo='retiro' propio (022_movimientos_caja_tipo_
@@ -303,8 +335,21 @@ export default function Ganancias() {
   // Ingreso Total/Devoluciones/Préstamos ya quedan afuera de esto sin
   // ningún cambio adicional.
   const fMovRetiro = useMemo(() =>
-    movimientosCaja.filter(m => m.tipo === 'retiro' && inPeriod(m.fecha, mes, anio, allYear)),
-    [movimientosCaja, mes, anio, allYear]
+    movimientosCaja.filter(m => m.tipo === 'retiro' && matchesPeriod(m.fecha)),
+    [movimientosCaja, matchesPeriod]
+  )
+
+  // NO-VIP: mismo conjunto que fMovIngreso ∪ fMovEgreso ∪ (préstamo/
+  // devolución, si los hubiera), pasado por resumenMovimientos — la
+  // función YA correcta y ya testeada que usa Caja temporada (Caja
+  // Temporada → "Cerrar caja"/recapPorRango) — en vez de reimplementar
+  // la misma cuenta de ventas/gastos/ganancia una tercera vez acá. Sólo
+  // agrega prestamos/ingresoTotal/devoluciones/retiros, que esta pantalla
+  // no usa; ventas/gastos/ganancia coinciden matemáticamente con
+  // fMovIngreso/fMovEgreso de arriba (mismo filtro, mismo total por fila).
+  const resumenPeriodoMovCaja = useMemo(() =>
+    resumenMovimientos(movimientosCaja.filter(m => matchesPeriod(m.fecha))),
+    [movimientosCaja, matchesPeriod]
   )
 
   // ── Previous period (for delta comparison) ─────────────────────────────────
@@ -369,13 +414,14 @@ export default function Ganancias() {
   const retiroUSD    = sumField(fSilvia, 'retiro_dolares') // ídem
   const ganancia   = ingARS - gastoTotal
 
-  // NO-VIP: mismos totales, desde movimientos_caja. Sin equivalente a
+  // NO-VIP: mismos totales, desde movimientos_caja, vía resumenMovimientos
+  // (ver resumenPeriodoMovCaja más arriba). Sin equivalente a
   // ingUSD/retiroPesos/retiroUSD — movimientos_caja no distingue moneda ni
   // tiene un tipo "retiro" (ver TIPO_LABELS en CajaTemporada.jsx: sólo
   // ingreso/egreso/prestamo/devolucion) — se omiten para NO-VIP.
-  const ingresosMovCaja = fMovIngreso.reduce((s, m) => s + movRowTotal(m), 0)
-  const gastosMovCaja   = fMovEgreso.reduce((s, m) => s + movRowTotal(m), 0)
-  const gananciaMovCaja = ingresosMovCaja - gastosMovCaja
+  const ingresosMovCaja = resumenPeriodoMovCaja.ventas
+  const gastosMovCaja   = resumenPeriodoMovCaja.gastos
+  const gananciaMovCaja = resumenPeriodoMovCaja.ganancia
 
   // Valores a mostrar según el complejo — para VIP son exactamente los
   // mismos ingARS/gastoTotal/ganancia/prevIngARS/prevGastos/prevGanancia de
@@ -569,9 +615,11 @@ export default function Ganancias() {
   const dPieData = isVip ? pieData : pieDataMovCaja
 
   // ─────────────────────────────────────────────────────────────────────────
-  const periodLabel = allYear
-    ? `Año ${anio}`
-    : `${MESES[mes]} ${anio}`
+  const periodLabel = customRange
+    ? `${format(rangoDesde, 'd MMM yyyy', { locale: es })} — ${format(rangoHasta, 'd MMM yyyy', { locale: es })}`
+    : allYear
+      ? `Año ${anio}`
+      : `${MESES[mes]} ${anio}`
 
   const TABS = [
     { id: 'resumen',  label: 'Resumen' },
@@ -594,33 +642,56 @@ export default function Ganancias() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {/* Mes */}
-          <select
-            data-testid="select-ganancias-mes"
-            value={mes}
-            onChange={e => { setMes(Number(e.target.value)); setAllYear(false) }}
-            disabled={allYear}
-            className="field" style={{ width: 'auto', paddingTop: '6px', paddingBottom: '6px' }}
-          >
-            {MESES.map((m, i) => <option key={i} value={i}>{m}</option>)}
-          </select>
+          {!customRange ? (
+            <>
+              {/* Mes */}
+              <select
+                data-testid="select-ganancias-mes"
+                value={mes}
+                onChange={e => { setMes(Number(e.target.value)); setAllYear(false) }}
+                disabled={allYear}
+                className="field" style={{ width: 'auto', paddingTop: '6px', paddingBottom: '6px' }}
+              >
+                {MESES.map((m, i) => <option key={i} value={i}>{m}</option>)}
+              </select>
 
-          {/* Año */}
-          <select
-            data-testid="select-ganancias-anio"
-            value={anio}
-            onChange={e => setAnio(Number(e.target.value))}
-            className="field" style={{ width: 'auto', paddingTop: '6px', paddingBottom: '6px' }}
-          >
-            {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
-          </select>
+              {/* Año */}
+              <select
+                data-testid="select-ganancias-anio"
+                value={anio}
+                onChange={e => setAnio(Number(e.target.value))}
+                className="field" style={{ width: 'auto', paddingTop: '6px', paddingBottom: '6px' }}
+              >
+                {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+              </select>
 
-          {/* Año completo toggle */}
+              {/* Año completo toggle */}
+              <button
+                onClick={() => setAllYear(v => !v)}
+                className={`px-3 py-1.5 rounded-[10px] text-sm font-medium border transition-all ${allYear ? 'bg-[#111111] text-white border-[#111111]' : 'bg-[var(--color-secundario)] text-[#333] border-[#f0e6d8] hover:border-[var(--color-primario)]'}`}
+              >
+                Año completo
+              </button>
+            </>
+          ) : (
+            // Rango personalizado — mismo componente Desde/Hasta que
+            // Reservas.jsx (src/components/DateRangePicker.jsx), sin
+            // límite de cuánto se puede retroceder: navega mes a mes con
+            // "‹" o eligiendo el año en el encabezado del calendario.
+            <DateRangePicker
+              startDate={rangoDesde}
+              endDate={rangoHasta}
+              onChange={({ startDate, endDate }) => { setRangoDesde(startDate); setRangoHasta(endDate) }}
+            />
+          )}
+
+          {/* Alternar entre mes/año y rango personalizado */}
           <button
-            onClick={() => setAllYear(v => !v)}
-            className={`px-3 py-1.5 rounded-[10px] text-sm font-medium border transition-all ${allYear ? 'bg-[#111111] text-white border-[#111111]' : 'bg-[var(--color-secundario)] text-[#333] border-[#f0e6d8] hover:border-[var(--color-primario)]'}`}
+            data-testid="toggle-ganancias-rango"
+            onClick={() => setCustomRange(v => !v)}
+            className={`px-3 py-1.5 rounded-[10px] text-sm font-medium border transition-all ${customRange ? 'bg-[#111111] text-white border-[#111111]' : 'bg-[var(--color-secundario)] text-[#333] border-[#f0e6d8] hover:border-[var(--color-primario)]'}`}
           >
-            Año completo
+            {customRange ? '← Volver a mes/año' : 'Rango personalizado'}
           </button>
 
           {/* Export CSV */}
@@ -673,7 +744,7 @@ export default function Ganancias() {
               value={ars(dIngresos)}
               color="green"
               large
-              prevValue={dPrevIngresos}
+              prevValue={customRange ? undefined : dPrevIngresos}
             />
             {isVip && (
               <SummaryCard
@@ -688,7 +759,7 @@ export default function Ganancias() {
               value={ars(dGastos)}
               color="red"
               large
-              prevValue={dPrevGastos}
+              prevValue={customRange ? undefined : dPrevGastos}
             />
             <div className="rounded-[16px] p-5 bg-[#111111]">
               <p className="text-xs font-semibold uppercase tracking-widest mb-1 text-[var(--color-secundario)]">
@@ -698,7 +769,7 @@ export default function Ganancias() {
                 {ars(dGanancia)}
               </p>
               <div className="mt-2">
-                <DeltaBadge current={dGanancia} previous={dPrevGanancia} />
+                {!customRange && <DeltaBadge current={dGanancia} previous={dPrevGanancia} />}
               </div>
             </div>
           </div>

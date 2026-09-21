@@ -456,9 +456,18 @@ export default function ReservaForm() {
     })
   }, [id, isEdit])
 
+  // Guard contra respuesta obsoleta — mismo patrón/motivo que
+  // Ganancias.jsx (complejoActivo pasa por un default antes de que
+  // Layout.jsx lo corrija al slug de la URL; sin esto, un código
+  // calculado para el complejo viejo podría pisar al del correcto).
   useEffect(() => {
     if (isEdit || !complejoActivo) return
-    fetchNextCode(complejoActivo.id).then((codigo) => set('codigo', codigo))
+    let cancelado = false
+    fetchNextCode(complejoActivo.id).then((codigo) => {
+      if (cancelado) return
+      set('codigo', codigo)
+    })
+    return () => { cancelado = true }
   }, [isEdit, complejoActivo?.id])
 
   useEffect(() => {
@@ -468,6 +477,16 @@ export default function ReservaForm() {
   }, [form.cabana, cabanasPorGrupo])
 
   // Auto-calcular monto_total al crear (no al editar)
+  //
+  // Guard contra respuesta obsoleta — mismo patrón/motivo que
+  // Ganancias.jsx: complejoActivo pasa por un default antes de que
+  // Layout.jsx lo corrija al slug de la URL, y además este efecto se
+  // vuelve a disparar en cada cambio de fecha/pax mientras el usuario
+  // completa el formulario — sin el guard, una respuesta más vieja
+  // (complejo o combinación de fecha/pax anterior) que resuelve después
+  // de la más nueva pisaría el precio ya correcto. Se chequea después de
+  // CADA await, no sólo al final, porque hay setState intermedios
+  // (setSinPeriodo/setPrecioNombrePeriodo) en los early-return de abajo.
   useEffect(() => {
     if (isEdit) return
     if (!form.fecha_entrada || !form.fecha_salida || !form.noches || form.noches <= 0 || !complejoActivo) {
@@ -479,6 +498,7 @@ export default function ReservaForm() {
 
     const pax     = Number(form.pax) || 2
     const safePax = Math.min(Math.max(pax, 2), 7)
+    let cancelado = false
 
     ;(async () => {
       const { data: periodos, error: errPeriodos } = await supabase
@@ -487,6 +507,7 @@ export default function ReservaForm() {
         .eq('complejo_id', complejoActivo.id)
         .order('orden')
 
+      if (cancelado) return
       console.log('[Precios] fecha_entrada:', form.fecha_entrada, '| pax:', safePax,
         '| períodos obtenidos:', periodos?.length, '| error:', errPeriodos?.message)
 
@@ -514,6 +535,7 @@ export default function ReservaForm() {
         .in('periodo_id', periodos.map((p) => p.id))
         .eq('pax', safePax)
 
+      if (cancelado) return
       console.log('[Precios] precios_pax:', preciosPax?.length, '| error:', errPax?.message)
 
       const resultado = resolverPrecioReserva(periodos, errPax ? [] : preciosPax, form.fecha_entrada, form.noches, form.pax)
@@ -522,6 +544,8 @@ export default function ReservaForm() {
       if (resultado.total) set('monto_total', String(resultado.total))
       console.log('[Precios] ✓ Resultado:', resultado.total, '|', resultado.precioNombrePeriodo)
     })()
+
+    return () => { cancelado = true }
   }, [form.fecha_entrada, form.fecha_salida, form.noches, form.pax, isEdit, complejoActivo?.id])
 
   // Aplicar descuento al monto base calculado (solo en crear)
@@ -536,16 +560,21 @@ export default function ReservaForm() {
     set('monto_total', String(Math.round(precioBaseNeto * (1 - pct / 100))))
   }, [form.descuento_aplicar, form.descuento_porcentaje, precioBaseNeto, isEdit])
 
+  // Guard contra respuesta obsoleta — ver comentario en el efecto de
+  // auto-cálculo de monto_total arriba (mismo motivo: complejo default +
+  // cambios rápidos de fecha/noches mientras se completa el formulario).
   useEffect(() => {
     if (!form.fecha_entrada || !form.noches || form.noches <= 0 || !complejoActivo) {
       setMinimoNochesError(''); return
     }
+    let cancelado = false
     supabase
       .from('periodos_precios')
       .select('nombre, minimo_noches')
       .eq('complejo_id', complejoActivo.id)
       .order('orden')
       .then(({ data }) => {
+        if (cancelado) return
         if (!data || data.length === 0) { setMinimoNochesError(''); return }
         const p = data.find(period =>
           form.fecha_entrada >= period.fecha_inicio &&
@@ -557,16 +586,23 @@ export default function ReservaForm() {
           ? `El período "${p.nombre}" requiere mínimo ${min} noches (reserva tiene ${form.noches})`
           : '')
       })
+    return () => { cancelado = true }
   }, [form.fecha_entrada, form.noches, complejoActivo?.id])
 
+  // Guard contra respuesta obsoleta — ver comentario en el efecto de
+  // auto-cálculo de monto_total más arriba (mismo motivo: complejo
+  // default + cambio de cabaña mientras se completa el formulario).
   useEffect(() => {
     if (!form.cabana || !complejoActivo) { setOcupadas([]); setFechaConflicto(''); return }
+    let cancelado = false
     fetchReservasOcupadasPorCabana(supabase, complejoActivo.id, form.cabana)
       .then(({ data }) => {
+        if (cancelado) return
         const ranges = (data || []).filter(r => !isEdit || String(r.id) !== String(id))
         setOcupadas(ranges)
         setFechaConflicto(getConflicto(form.fecha_entrada, form.fecha_salida, ranges))
       })
+    return () => { cancelado = true }
   }, [form.cabana, isEdit, id, complejoActivo?.id])
 
   const handleFechaEntrada = (value) => {

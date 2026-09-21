@@ -313,7 +313,7 @@ export default function CajaTemporada() {
   // filtro de mes/año se aplica en el cliente — así "Cerrar caja" y
   // "Ver detalle" pueden recalcular su propio recap contra cualquier
   // rango de fechas sin pegarle de nuevo a la base.
-  const loadMovimientos = async () => {
+  const loadMovimientos = async (isStale = () => false) => {
     if (!complejoActivo) {
       setMovimientos([])
       setLoadingMovs(false)
@@ -321,27 +321,42 @@ export default function CajaTemporada() {
     }
     setLoadingMovs(true)
     const { data } = await fetchMovimientosPorComplejo(supabase, complejoActivo.id)
+    if (isStale()) return
     setMovimientos(data || [])
     setLoadingMovs(false)
   }
-  useEffect(() => { loadMovimientos() }, [complejoActivo?.id])
+  // Guard contra respuesta obsoleta — mismo patrón/motivo que
+  // Ganancias.jsx (complejoActivo pasa por un default antes de que
+  // Layout.jsx lo corrija al slug de la URL; sin esto, el fetch del
+  // complejo viejo puede resolver después y pisar los datos correctos).
+  useEffect(() => {
+    let cancelado = false
+    loadMovimientos(() => cancelado)
+    return () => { cancelado = true }
+  }, [complejoActivo?.id])
 
   // Reservas del complejo, para vincular (opcionalmente) un movimiento de
   // ingreso con una reserva puntual — acá SÍ se excluyen las Canceladas
   // (no tiene sentido ofrecer vincular un movimiento nuevo a una reserva
   // cancelada).
+  // Guard contra respuesta obsoleta — ver comentario en loadMovimientos arriba.
   useEffect(() => {
     if (!complejoActivo) {
       setReservas([])
       return
     }
+    let cancelado = false
     supabase
       .from('reservas')
       .select('id, codigo, nombre_apellido')
       .eq('complejo_id', complejoActivo.id)
       .neq('estado', 'Cancelada')
       .order('codigo', { ascending: false })
-      .then(({ data }) => setReservas(data || []))
+      .then(({ data }) => {
+        if (cancelado) return
+        setReservas(data || [])
+      })
+    return () => { cancelado = true }
   }, [complejoActivo?.id])
 
   // Mapa id → código de TODAS las reservas del complejo (Canceladas
@@ -351,26 +366,30 @@ export default function CajaTemporada() {
   // mostrando de qué reserva vino — sólo el picker de reservas NUEVAS
   // para vincular excluye las Canceladas.
   const [reservaCodigos, setReservaCodigos] = useState({})
+  // Guard contra respuesta obsoleta — ver comentario en loadMovimientos arriba.
   useEffect(() => {
     if (!complejoActivo) {
       setReservaCodigos({})
       return
     }
+    let cancelado = false
     supabase
       .from('reservas')
       .select('id, codigo')
       .eq('complejo_id', complejoActivo.id)
       .then(({ data }) => {
+        if (cancelado) return
         const map = {}
         ;(data || []).forEach((r) => { map[r.id] = r.codigo })
         setReservaCodigos(map)
       })
+    return () => { cancelado = true }
   }, [complejoActivo?.id])
 
   // TODOS los cierres del complejo, sin límite — se usan tanto para la
   // lista "Cierres recientes" como para el candado de fechas cerradas
   // (Partes 1 y 2), así que tienen que estar completos, no paginados.
-  const loadCierres = async () => {
+  const loadCierres = async (isStale = () => false) => {
     if (!complejoActivo) {
       setCierres([])
       setLoadingCierres(false)
@@ -378,10 +397,16 @@ export default function CajaTemporada() {
     }
     setLoadingCierres(true)
     const { data } = await fetchCierresPorComplejo(supabase, complejoActivo.id)
+    if (isStale()) return
     setCierres(data || [])
     setLoadingCierres(false)
   }
-  useEffect(() => { loadCierres() }, [complejoActivo?.id])
+  // Guard contra respuesta obsoleta — ver comentario en loadMovimientos arriba.
+  useEffect(() => {
+    let cancelado = false
+    loadCierres(() => cancelado)
+    return () => { cancelado = true }
+  }, [complejoActivo?.id])
 
   // --- Movimientos: filtro de período (mismo patrón que Caja.jsx) -----
 
