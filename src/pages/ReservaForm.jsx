@@ -162,6 +162,43 @@ export function fechaMasReciente(...fechas) {
   return validas.reduce((masReciente, f) => (f > masReciente ? f : masReciente))
 }
 
+// Decide si una reserva recién creada dispara el email de confirmación
+// (best-effort — ver handleSubmit más abajo). Una reserva a $0 (o sin
+// precio cargado: null/undefined/'', tratado igual que 0) NUNCA debe
+// disparar este email — chequeo explícito e independiente de si
+// sendEmailConfirmacion hoy funciona o no (investigado en vivo: hoy no
+// — el envío nunca resuelve con éxito en producción). Mismo criterio
+// para VIP y no-VIP — el único call site de sendEmailConfirmacion ya es
+// compartido entre todos los complejos, no hace falta duplicar el
+// chequeo.
+//
+// IMPORTANTE: esta función YA NO decide si la reserva vence a las 48hs
+// — eso lo decide debeVencerA48hs (justo abajo), una función separada
+// e independiente. Antes fecha_vencimiento se seteaba adentro del
+// .then() de éxito de este email, así que dependía 100% de que el
+// email funcionara — como el email nunca resuelve con éxito en
+// producción (investigado en vivo), fecha_vencimiento nunca se seteaba
+// para NINGUNA reserva, y el cron de vencimiento (check-reservas-
+// vencidas) quedaba inerte para todas. Las dos cosas están
+// deliberadamente desacopladas ahora: el vencimiento a 48hs pasa a
+// setearse en el insert mismo (ver handleSubmit), sin depender para
+// nada de este email ni de si tiene éxito o no.
+export function debeEnviarEmailConfirmacion(estadoFinal, email, montoTotal) {
+  return estadoFinal === 'Pendiente' && Boolean(email) && Number(montoTotal || 0) > 0
+}
+
+// Decide si una reserva recién creada arranca con fecha_vencimiento
+// seteada (vence a las 48hs si sigue Pendiente) — INDEPENDIENTE del
+// email de confirmación: a propósito NO exige `email` (a diferencia de
+// debeEnviarEmailConfirmacion), porque la cabaña se tiene que liberar
+// sola pasadas las 48hs aunque la reserva no tenga email cargado. El
+// único requisito compartido con esa otra función es montoTotal > 0 —
+// una reserva a $0/sin precio nunca vence sola (mismo criterio que ya
+// existía para el email). Mismo criterio para VIP y no-VIP.
+export function debeVencerA48hs(estadoFinal, montoTotal) {
+  return estadoFinal === 'Pendiente' && Number(montoTotal || 0) > 0
+}
+
 // --- Complejos NO-VIP: seña + pago en cabaña combinados en UNA fila de
 // movimientos_caja (origen='sena'), bucketeada por método de pago:
 //   sena1_tipo/sena2_tipo 'Banco'        → monto_depositos
@@ -793,9 +830,19 @@ export default function ReservaForm() {
         }
       }
     } else {
+      // Vencimiento a 48hs seteado directo en el insert, independiente
+      // del email de confirmación (ver debeVencerA48hs más arriba) —
+      // sólo en creación, nunca en `payload` (que también usa la rama
+      // de arriba para el update de edición: si esto viviera en
+      // `payload`, cada vez que se re-guarda una reserva Pendiente ya
+      // existente le resetearía el vencimiento).
+      const fechaVencimientoInicial = debeVencerA48hs(estadoFinal, form.monto_total)
+        ? new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString()
+        : null
+
       const { data: inserted, error: insertErr } = await supabase
         .from('reservas')
-        .insert({ ...payload, complejo_id: complejoActivo.id })
+        .insert({ ...payload, complejo_id: complejoActivo.id, fecha_vencimiento: fechaVencimientoInicial })
         .select('id, codigo, nombre_apellido, email, cabana, pax, fecha_entrada, fecha_salida, noches, monto_total, sena1_monto, sena1_tipo, sena1_fecha, estado')
         .single()
       err = insertErr
@@ -874,13 +921,18 @@ export default function ReservaForm() {
     }
 
     if (!isEdit && newReserva) {
-      if (estadoFinal === 'Pendiente' && form.email) {
+      if (debeEnviarEmailConfirmacion(estadoFinal, form.email, form.monto_total)) {
+        // Best-effort puro: sólo deja constancia informativa de que el
+        // envío tuvo éxito (nada en el código lee este campo hoy, pero
+        // sirve para auditar a mano por SQL si hace falta). Ya NO toca
+        // fecha_vencimiento acá — ver debeVencerA48hs más arriba: el
+        // vencimiento a 48hs se setea en el insert, no depende de que
+        // este email tenga éxito.
         sendEmailConfirmacion(newReserva)
           .then(async (sentAt) => {
             if (sentAt) {
               await supabase.from('reservas').update({
                 email_confirmacion_enviado_at: sentAt,
-                fecha_vencimiento: new Date(new Date(sentAt).getTime() + 48 * 60 * 60 * 1000).toISOString(),
               }).eq('id', newReserva.id)
             }
           })

@@ -7,7 +7,7 @@
 // arbitrario. Estos tests prueban específicamente los dos bugs que tenía
 // el cálculo viejo: (1) no distinguía años, (2) no podía cruzar meses.
 import { describe, it, expect } from 'vitest'
-import { facturadoEnRango } from '../../src/pages/Reservas'
+import { facturadoEnRango, montoOGuion } from '../../src/pages/Reservas'
 
 describe('facturadoEnRango (código real) — reemplaza el filtro por r.mes de la tarjeta "facturado"', () => {
   it('suma sólo las reservas cuya fecha_entrada cae dentro del rango', () => {
@@ -67,5 +67,26 @@ describe('facturadoEnRango (código real) — reemplaza el filtro por r.mes de l
       { fecha_entrada: '2026-03-12', monto_total: 50 },
     ]
     expect(facturadoEnRango(reservas, '2026-01-01', '2026-12-31')).toBe(50)
+  })
+})
+
+// La tabla de Reservas.jsx (columnas Total/Saldo) usaba un chequeo
+// "truthy" (`r.monto_total ? ... : '-'`), que trataba 0 igual que
+// null/undefined/'' — una reserva a $0 mostraba "-", indistinguible de
+// una sin precio cargado. montoOGuion la reemplaza distinguiendo
+// explícitamente "sin precio" (null/undefined/'') de "precio $0" —
+// mismo criterio que ars() en Ganancias.jsx y money() en
+// ReservaDetalle.jsx.
+describe('montoOGuion (código real) — Total/Saldo de la tabla de Reservas', () => {
+  it('0 se muestra como "$0", no como "-" (el bug real reportado)', () => {
+    expect(montoOGuion(0)).toBe('$0')
+  })
+  it('un monto positivo se formatea con separador de miles es-AR', () => {
+    expect(montoOGuion(1234567)).toBe('$1.234.567')
+  })
+  it('null/undefined/\'\' (sin precio cargado) se muestran como "-"', () => {
+    expect(montoOGuion(null)).toBe('-')
+    expect(montoOGuion(undefined)).toBe('-')
+    expect(montoOGuion('')).toBe('-')
   })
 })

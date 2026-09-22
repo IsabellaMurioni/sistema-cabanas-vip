@@ -46,6 +46,17 @@ export function facturadoEnRango(reservas, desdeISO, hastaISO) {
     .reduce((s, r) => s + (Number(r.monto_total) || 0), 0)
 }
 
+// Distingue "sin precio cargado" (null/undefined/'') de "precio $0" —
+// mismo patrón que ya usan Ganancias.jsx (ars()) y ReservaDetalle.jsx
+// (money()). Las columnas Total/Saldo de la tabla de abajo usaban un
+// chequeo "truthy" (`r.monto_total ? ... : '-'`), que trataba 0 igual
+// que null/undefined/'' y mostraba "-" para una reserva a $0 —
+// indistinguible de una reserva sin precio cargado (bug real reportado).
+export function montoOGuion(v) {
+  if (v === null || v === undefined || v === '') return '-'
+  return `$${Number(v).toLocaleString('es-AR')}`
+}
+
 const estadoBadge = {
   Pendiente:  'badge badge-pendiente',
   Confirmada: 'badge badge-confirmada',
@@ -264,6 +275,7 @@ export default function Reservas() {
               {filtered.map((r) => {
                 const saldo      = saldoRestante(r)
                 const finalizada = r.estado === 'Finalizada'
+                const sinPrecio  = r.monto_total === null || r.monto_total === undefined || r.monto_total === ''
                 return (
                   <tr key={r.id} style={finalizada ? { opacity: 0.65 } : {}}>
                     <td className="font-mono font-semibold" style={{ color: finalizada ? '#888' : 'var(--color-primario)' }}>
@@ -281,10 +293,10 @@ export default function Reservas() {
                     </td>
                     <td className="text-center text-[#555]">{r.noches ?? '-'}</td>
                     <td className="text-[#333]">
-                      {r.monto_total ? `$${Number(r.monto_total).toLocaleString('es-AR')}` : '-'}
+                      {montoOGuion(r.monto_total)}
                     </td>
                     <td className={`font-semibold ${saldo > 0 ? 'text-orange-600' : 'text-green-700'}`}>
-                      {r.monto_total ? `$${saldo.toLocaleString('es-AR')}` : '-'}
+                      {sinPrecio ? '-' : montoOGuion(saldo)}
                     </td>
                     <td>
                       <span className={estadoBadge[r.estado] || 'badge badge-finalizada'}>

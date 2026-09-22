@@ -2,7 +2,7 @@
 // DB. getConflicto ES la función real de detección de superposición de
 // fechas de reserva.
 import { describe, it, expect } from 'vitest'
-import { calcNoches, getMes, fechaMasReciente, getConflicto } from '../../src/pages/ReservaForm'
+import { calcNoches, getMes, fechaMasReciente, getConflicto, debeEnviarEmailConfirmacion } from '../../src/pages/ReservaForm'
 
 describe('getConflicto — superposición de fechas de reserva (código real)', () => {
   const ocupadas = [{ fecha_entrada: '2026-08-10', fecha_salida: '2026-08-15', nombre_apellido: 'García, Juan' }]
@@ -83,5 +83,48 @@ describe('fechaMasReciente (código real)', () => {
   })
   it('ninguna fecha cargada → hoy, formato ISO', () => {
     expect(fechaMasReciente('', '', '')).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+  })
+})
+
+// Esta es la función real que handleSubmit usa para decidir si llama a
+// sendEmailConfirmacion (ver src/pages/ReservaForm.jsx) — no una
+// reimplementación aparte. Una reserva a $0/sin precio nunca debe
+// disparar el email de confirmación (y, por lo tanto, nunca queda con
+// fecha_vencimiento seteada) — chequeo explícito e independiente de si
+// el envío de email hoy funciona o no.
+describe('debeEnviarEmailConfirmacion (código real) — nunca dispara el email para una reserva a $0', () => {
+  it('Pendiente + email + precio > 0 → sí dispara', () => {
+    expect(debeEnviarEmailConfirmacion('Pendiente', 'guest@mail.com', '15000')).toBe(true)
+    expect(debeEnviarEmailConfirmacion('Pendiente', 'guest@mail.com', 15000)).toBe(true)
+  })
+
+  it('Pendiente + email + precio = 0 (string "0") → NO dispara', () => {
+    expect(debeEnviarEmailConfirmacion('Pendiente', 'guest@mail.com', '0')).toBe(false)
+  })
+
+  it('Pendiente + email + precio = 0 (number 0) → NO dispara', () => {
+    expect(debeEnviarEmailConfirmacion('Pendiente', 'guest@mail.com', 0)).toBe(false)
+  })
+
+  it('Pendiente + email + precio en blanco (\'\') → NO dispara (blanco = 0)', () => {
+    expect(debeEnviarEmailConfirmacion('Pendiente', 'guest@mail.com', '')).toBe(false)
+  })
+
+  it('Pendiente + email + precio null/undefined → NO dispara', () => {
+    expect(debeEnviarEmailConfirmacion('Pendiente', 'guest@mail.com', null)).toBe(false)
+    expect(debeEnviarEmailConfirmacion('Pendiente', 'guest@mail.com', undefined)).toBe(false)
+  })
+
+  it('precio > 0 pero estado ya no es Pendiente → NO dispara (sin cambios de comportamiento previo)', () => {
+    expect(debeEnviarEmailConfirmacion('Confirmada', 'guest@mail.com', 15000)).toBe(false)
+  })
+
+  it('precio > 0 y Pendiente pero sin email → NO dispara (sin cambios de comportamiento previo)', () => {
+    expect(debeEnviarEmailConfirmacion('Pendiente', '', 15000)).toBe(false)
+    expect(debeEnviarEmailConfirmacion('Pendiente', null, 15000)).toBe(false)
+  })
+
+  it('precio negativo (no debería pasar en la práctica, min=0 en el form) → NO dispara igual', () => {
+    expect(debeEnviarEmailConfirmacion('Pendiente', 'guest@mail.com', -100)).toBe(false)
   })
 })

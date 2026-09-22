@@ -20,20 +20,33 @@ import { es } from 'date-fns/locale'
 
 const DAY_W = 38
 const ROW_H = 48
-const ROW_H_SINGLE = 80
 
-// Piso de altura total para la grilla de disponibilidad — medido en vivo:
-// con la fila base (ROW_H) Mimmo, el más chico de los dos complejos con
+// Piso de altura total para la grilla "Ver todas" — medido en vivo: con
+// la fila base (ROW_H) Mimmo, el más chico de los dos complejos con
 // muchas cabañas (12 vs. las 15 de VIP), arma 12 * 48 = 576px sólo de
 // filas (sin contar separadores de grupo). Usamos ese número — no uno
 // inventado — como piso: complejos con menos cabañas (Casas Azahar, Los
 // Amigos, Chacras del Mar) reparten esa misma altura entre menos filas y
 // quedan con la grilla llena en vez de corta/vacía; Mimmo y VIP, que ya
 // superan el piso con la fila base, no cambian (576/12 = 48 = ROW_H;
-// 576/15 < 48). TARGET_MIN_H_SINGLE mantiene la misma proporción para la
-// vista de una sola cabaña (12 * 80 = 960).
+// 576/15 < 48). Esto es EXCLUSIVO de "Ver todas" — ver ROW_H_SINGLE más
+// abajo para "Ver por cabaña", que NO usa este piso dinámico.
 const TARGET_MIN_H_TODAS = 576
-const TARGET_MIN_H_SINGLE = 960
+
+// "Ver por cabaña" (un solo TimelineRow) usa una altura FIJA, igual en
+// los 5 complejos — a propósito, no calculada por cantidad de cabañas.
+// Ya pasó dos veces que esta vista terminó con una altura distinta de
+// "Ver todas" para el mismo complejo: primero con su propia constante y
+// piso independientes (desalineados de rowH), después reusando el
+// `rowH` dinámico de "Ver todas" tal cual (con lo que VIP/Mimmo, que
+// tienen muchas cabañas, volvían a quedar con una fila corta acá). El
+// valor de abajo es exactamente el `rowH` que "Ver todas" calcula HOY
+// para Chacras del Mar (2 cabañas: Math.max(ROW_H, TARGET_MIN_H_TODAS /
+// 2) = Math.max(48, 288) = 288) — no lo recalcules dinámicamente ni lo
+// vuelvas a atar a `rowH`: si "Ver todas" cambia de fórmula en el
+// futuro, esta vista NO debe seguirla sola — actualizá este número a
+// mano si hace falta.
+const ROW_H_SINGLE = 288
 
 // La grilla (bandas de mes/día + filas) vive en su propio contenedor con
 // scroll (ambos ejes) acotado a esta altura — necesario para que
@@ -402,7 +415,10 @@ function TimelineRow({ cabana, reservas, startDate, endDate, height = 40, onRese
 }
 
 // ── ReservaPopup ────────────────────────────────────────────
-function ReservaPopup({ reserva, onClose, onView }) {
+// Exportado (además del default) para que los tests unitarios puedan
+// renderizarlo directo, sin montar toda la página — mismo motivo que
+// agruparDiasPorMes más arriba.
+export function ReservaPopup({ reserva, onClose, onView }) {
   const { getCabanaColor } = useComplejo()
   const saldo =
     Number(reserva.monto_total || 0) -
@@ -461,7 +477,13 @@ function ReservaPopup({ reserva, onClose, onView }) {
             </div>
           </div>
 
-          {reserva.monto_total > 0 && (
+          {/* Antes se ocultaba todo el bloque con `monto_total > 0`, así
+              que una reserva a $0 (precio cargado, pero en $0 a propósito)
+              no mostraba nada — indistinguible de una sin precio cargado.
+              Ahora se muestra siempre que haya un valor cargado (0
+              incluido); sólo se oculta si monto_total es null/undefined/''
+              — mismo criterio que montoOGuion en Reservas.jsx. */}
+          {reserva.monto_total !== null && reserva.monto_total !== undefined && reserva.monto_total !== '' && (
             <div className="flex gap-2">
               <div className="flex-1 bg-[var(--color-secundario)] rounded-[10px] p-2.5 text-center">
                 <p className="section-label mb-1">Total</p>
@@ -564,11 +586,12 @@ export default function Disponibilidad() {
   const occupiedCount = CABANAS.filter((c) => cabanaStatus[c]?.occupied).length
 
   // Complejos con pocas cabañas reciben filas proporcionalmente más altas
-  // (ver TARGET_MIN_H_TODAS/SINGLE más arriba) — genérico por cantidad de
-  // cabañas, sin casos especiales por complejo.
+  // (ver TARGET_MIN_H_TODAS más arriba) — genérico por cantidad de
+  // cabañas, sin casos especiales por complejo. Sólo para "Ver todas" —
+  // "Ver por cabaña" usa ROW_H_SINGLE (fijo, ver comentario ahí), NO este
+  // `rowH`.
   const numCabanas = CABANAS.length || 1
   const rowH = Math.max(ROW_H, TARGET_MIN_H_TODAS / numCabanas)
-  const rowHSingle = Math.max(ROW_H_SINGLE, TARGET_MIN_H_SINGLE / numCabanas)
 
   return (
     <div className="flex flex-col h-full fade-in">
@@ -929,7 +952,7 @@ export default function Disponibilidad() {
                       reservas={reservas}
                       startDate={startDate}
                       endDate={endDate}
-                      height={rowHSingle}
+                      height={ROW_H_SINGLE}
                       onReservaClick={setPopup}
                     />
                   </div>
