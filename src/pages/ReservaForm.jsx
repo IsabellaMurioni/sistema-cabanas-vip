@@ -425,6 +425,17 @@ export default function ReservaForm() {
 
   const [sinPeriodo, setSinPeriodo] = useState(false)
   const [precioBaseNeto, setPrecioBaseNeto] = useState(null)
+  // Precio "antes del descuento" sobre el que se calcula el % — a
+  // diferencia de precioBaseNeto (que sólo existe cuando hay un precio
+  // por período calculado automático, y nunca en edición: ver el efecto
+  // de arriba, `if (isEdit) return`), éste se captura en el momento de
+  // tildar "Aplicar descuento" (ver el onChange del checkbox más abajo),
+  // sea cual sea el origen del precio en ese momento — automático,
+  // tipeado a mano, o el monto ya cargado de una reserva existente en
+  // edición. Bug real reportado: antes el descuento sólo se aplicaba si
+  // precioBaseNeto estaba resuelto, así que un precio manual (sin
+  // período configurado) o cualquier edición lo dejaban sin efecto.
+  const [montoBaseDescuento, setMontoBaseDescuento] = useState(null)
   const [montoModificado, setMontoModificado] = useState(false)
   const [originalPagos, setOriginalPagos] = useState(null)
   const [ocupadas, setOcupadas] = useState([])
@@ -478,6 +489,7 @@ export default function ReservaForm() {
           descuento_porcentaje: '',
           descuento_motivo:     '',
         })
+        setMontoBaseDescuento(null)
         setOriginalPagos({
           sena1_monto:      data.sena1_monto,
           sena1_tipo:       data.sena1_tipo ?? 'Banco',
@@ -578,6 +590,11 @@ export default function ReservaForm() {
       const resultado = resolverPrecioReserva(periodos, errPax ? [] : preciosPax, form.fecha_entrada, form.noches, form.pax)
       setPrecioNombrePeriodo(resultado.precioNombrePeriodo)
       setPrecioBaseNeto(resultado.total)
+      // Mantiene montoBaseDescuento sincronizado con el precio por período
+      // recién calculado (ver la declaración de montoBaseDescuento más
+      // arriba) — así, si se cambian fechas/pax con el descuento ya
+      // tildado, el % se recalcula sobre el precio nuevo.
+      if (resultado.total) setMontoBaseDescuento(resultado.total)
       if (resultado.total) set('monto_total', String(resultado.total))
       console.log('[Precios] ✓ Resultado:', resultado.total, '|', resultado.precioNombrePeriodo)
     })()
@@ -585,17 +602,20 @@ export default function ReservaForm() {
     return () => { cancelado = true }
   }, [form.fecha_entrada, form.fecha_salida, form.noches, form.pax, isEdit, complejoActivo?.id])
 
-  // Aplicar descuento al monto base calculado (solo en crear)
+  // Aplica el % de descuento sobre montoBaseDescuento — corre en
+  // creación Y en edición (antes era "solo en crear" y sólo funcionaba
+  // si precioBaseNeto, el precio automático por período, estaba
+  // resuelto; un precio tipeado a mano o cualquier edición dejaban el
+  // descuento sin efecto — bug real reportado).
   useEffect(() => {
-    if (isEdit || precioBaseNeto === null) return
-    if (!form.descuento_aplicar || !form.descuento_porcentaje) {
-      set('monto_total', String(precioBaseNeto))
+    if (!form.descuento_aplicar || montoBaseDescuento === null) return
+    const pct = Number(form.descuento_porcentaje)
+    if (!form.descuento_porcentaje || pct <= 0 || pct > 100) {
+      set('monto_total', String(montoBaseDescuento))
       return
     }
-    const pct = Number(form.descuento_porcentaje)
-    if (pct <= 0 || pct > 100) { set('monto_total', String(precioBaseNeto)); return }
-    set('monto_total', String(Math.round(precioBaseNeto * (1 - pct / 100))))
-  }, [form.descuento_aplicar, form.descuento_porcentaje, precioBaseNeto, isEdit])
+    set('monto_total', String(Math.round(montoBaseDescuento * (1 - pct / 100))))
+  }, [form.descuento_aplicar, form.descuento_porcentaje, montoBaseDescuento])
 
   // Guard contra respuesta obsoleta — ver comentario en el efecto de
   // auto-cálculo de monto_total arriba (mismo motivo: complejo default +
@@ -1244,7 +1264,20 @@ export default function ReservaForm() {
                 <input
                   type="checkbox"
                   checked={form.descuento_aplicar}
-                  onChange={(e) => set('descuento_aplicar', e.target.checked)}
+                  onChange={(e) => {
+                    const activar = e.target.checked
+                    if (activar) {
+                      // Captura el precio actual como base del descuento
+                      // en el momento de tildar el checkbox — automático
+                      // (precioBaseNeto) si ya se resolvió por período,
+                      // si no el monto cargado en ese momento (a mano, o
+                      // el de una reserva existente en edición).
+                      setMontoBaseDescuento(precioBaseNeto ?? Number(form.monto_total || 0))
+                    } else if (montoBaseDescuento !== null) {
+                      set('monto_total', String(montoBaseDescuento))
+                    }
+                    set('descuento_aplicar', activar)
+                  }}
                   className="w-4 h-4 rounded border-gray-300 text-green-600 focus:ring-green-500 cursor-pointer"
                 />
                 <span className="text-sm font-medium text-gray-700">Aplicar descuento</span>
@@ -1275,16 +1308,18 @@ export default function ReservaForm() {
                     </Field>
                   </div>
 
-                  {/* Desglose (create mode only) */}
-                  {!isEdit && precioBaseNeto && Number(form.descuento_porcentaje) > 0 && (
+                  {/* Desglose — funciona en creación y edición, usa
+                      montoBaseDescuento (ver más arriba), no
+                      precioBaseNeto (que en edición siempre es null) */}
+                  {montoBaseDescuento !== null && Number(form.descuento_porcentaje) > 0 && (
                     <div className="space-y-1.5 text-sm border-t border-green-200 pt-3">
                       <div className="flex justify-between text-gray-600">
                         <span>Precio base</span>
-                        <span>${precioBaseNeto.toLocaleString('es-AR')}</span>
+                        <span>${montoBaseDescuento.toLocaleString('es-AR')}</span>
                       </div>
                       <div className="flex justify-between text-red-600 font-medium">
                         <span>Descuento ({form.descuento_porcentaje}%)</span>
-                        <span>− ${Math.round(precioBaseNeto * Number(form.descuento_porcentaje) / 100).toLocaleString('es-AR')}</span>
+                        <span>− ${Math.round(montoBaseDescuento * Number(form.descuento_porcentaje) / 100).toLocaleString('es-AR')}</span>
                       </div>
                       <div className="flex justify-between font-bold text-gray-800 border-t border-green-200 pt-1.5">
                         <span>Total final</span>
