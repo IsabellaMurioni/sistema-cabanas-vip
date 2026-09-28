@@ -606,20 +606,22 @@ export default function ReservaForm() {
   // en creación Y en edición (mismo motivo que antes: precioBaseNeto,
   // el precio automático por período, no siempre está resuelto — un
   // precio tipeado a mano o cualquier edición dejarían el descuento sin
-  // efecto si dependiera de eso). El descuento NUNCA puede llevar el
-  // total por debajo de $0 — Math.max(0, ...) lo clampea; si el monto
-  // tipeado supera la base, el resultado es simplemente $0, no un
-  // número negativo. El desglose de abajo (JSX) muestra el descuento
-  // EFECTIVO (lo que realmente se restó, no lo tipeado) — así un clamp
-  // queda visible ahí en vez de silencioso.
+  // efecto si dependiera de eso). Un monto que supera la base es
+  // INVÁLIDO — a diferencia de un clamp silencioso a $0, acá NO se
+  // aplica nada: el total se mantiene en montoBaseDescuento (como si no
+  // hubiera descuento todavía) hasta que se corrija a un valor válido
+  // (0 <= monto <= base). El error visible que acompaña esto vive en el
+  // JSX (descuentoExcedeBase, más abajo) — se deriva de las mismas
+  // variables en cada render, así que desaparece solo apenas se corrige
+  // el monto, sin necesidad de limpiarlo a mano acá.
   useEffect(() => {
     if (!form.descuento_aplicar || montoBaseDescuento === null) return
     const monto = Number(form.descuento_monto)
-    if (!form.descuento_monto || monto <= 0) {
+    if (!form.descuento_monto || monto <= 0 || monto > montoBaseDescuento) {
       set('monto_total', String(montoBaseDescuento))
       return
     }
-    set('monto_total', String(Math.max(0, montoBaseDescuento - monto)))
+    set('monto_total', String(montoBaseDescuento - monto))
   }, [form.descuento_aplicar, form.descuento_monto, montoBaseDescuento])
 
   // Guard contra respuesta obsoleta — ver comentario en el efecto de
@@ -687,6 +689,16 @@ export default function ReservaForm() {
     Number(form.sena1_monto || 0) -
     Number(form.sena2_monto || 0) -
     Number(form.pago_cabana_monto || 0)
+
+  // Derivado en cada render — no es estado propio, así que desaparece
+  // solo apenas se corrige el monto (sin necesidad de limpiarlo a
+  // mano). Ver el useEffect de más abajo que aplica el descuento: usa
+  // exactamente este mismo criterio (monto > montoBaseDescuento) para
+  // decidir que el descuento es inválido y no tocar monto_total.
+  const descuentoExcedeBase =
+    form.descuento_aplicar &&
+    montoBaseDescuento !== null &&
+    Number(form.descuento_monto) > montoBaseDescuento
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -795,15 +807,19 @@ export default function ReservaForm() {
       Number(form.pago_cabana_monto || 0) > 0
     const estadoFinal = form.estado === 'Pendiente' && hasPago ? 'Confirmada' : form.estado
 
-    // Monto de descuento EFECTIVO a persistir — mismo clamp que ya
-    // aplica el desglose de la UI (Math.min contra montoBaseDescuento),
-    // para que lo guardado en la base coincida con lo que realmente se
-    // restó del total, no con lo tipeado crudo si eso superaba la base.
-    // Sólo para reporting (ver 027_descuento_monto_fijo.sql) — hoy nada
-    // más lee estas dos columnas todavía.
-    const montoDescuento = form.descuento_aplicar && montoBaseDescuento !== null
-      ? Math.min(Math.max(Number(form.descuento_monto) || 0, 0), montoBaseDescuento)
-      : null
+    // Monto de descuento a persistir — mismo criterio de validez que ya
+    // usa el efecto que calcula monto_total y el desglose de la UI: un
+    // monto tipeado que supera montoBaseDescuento es INVÁLIDO (no se
+    // clampea), así que acá tampoco se guarda nada para él — coincide
+    // con que monto_total ya quedó en la base, sin descuento aplicado.
+    // Mismo criterio para el motivo: si el monto no es válido, no hay
+    // descuento real al que asociarle una razón. Sólo para reporting
+    // (ver 027_descuento_monto_fijo.sql) — hoy nada más lee estas dos
+    // columnas todavía.
+    const descuentoTipeado = Number(form.descuento_monto) || 0
+    const descuentoValido = form.descuento_aplicar && montoBaseDescuento !== null
+      && descuentoTipeado > 0 && descuentoTipeado <= montoBaseDescuento
+    const montoDescuento = descuentoValido ? descuentoTipeado : null
 
     const payload = {
       codigo: form.codigo,
@@ -836,7 +852,7 @@ export default function ReservaForm() {
       estado: estadoFinal,
       observaciones: form.observaciones || null,
       descuento_monto: montoDescuento,
-      descuento_motivo: form.descuento_aplicar ? (form.descuento_motivo || null) : null,
+      descuento_motivo: descuentoValido ? (form.descuento_motivo || null) : null,
     }
 
     let err
@@ -1307,11 +1323,17 @@ export default function ReservaForm() {
                       <input
                         type="number"
                         min={0}
+                        data-testid="input-descuento-monto"
                         value={form.descuento_monto}
                         onChange={(e) => set('descuento_monto', e.target.value)}
-                        className={inputClass}
+                        className={`${inputClass} ${descuentoExcedeBase ? 'border-red-400' : ''}`}
                         placeholder="Ej: 5000"
                       />
+                      {descuentoExcedeBase && montoBaseDescuento !== null && (
+                        <p data-testid="error-descuento-excede" className="text-xs text-red-600 mt-1">
+                          El descuento no puede ser mayor al monto total (${montoBaseDescuento.toLocaleString('es-AR')})
+                        </p>
+                      )}
                     </Field>
                     <Field label="Motivo">
                       <input
@@ -1327,13 +1349,12 @@ export default function ReservaForm() {
                   {/* Desglose — funciona en creación y edición, usa
                       montoBaseDescuento (ver más arriba), no
                       precioBaseNeto (que en edición siempre es null).
-                      Muestra el descuento EFECTIVO (lo que realmente se
-                      resta, clampeado a montoBaseDescuento), no lo
-                      tipeado tal cual — así si el monto tipeado supera
-                      la base, acá se ve el clamp en vez de quedar
-                      silencioso (ej.: tipeás $50.000 sobre una base de
-                      $30.000 → esto muestra "− $30.000", no "− $50.000"). */}
-                  {montoBaseDescuento !== null && Number(form.descuento_monto) > 0 && (
+                      Sólo se muestra con un monto VÁLIDO (positivo y
+                      <= la base) — si excede la base no hay descuento
+                      real aplicado (ver descuentoExcedeBase / el error
+                      junto al input), así que mostrar acá un "Total
+                      final" habría sido engañoso. */}
+                  {montoBaseDescuento !== null && Number(form.descuento_monto) > 0 && !descuentoExcedeBase && (
                     <div className="space-y-1.5 text-sm border-t border-green-200 pt-3">
                       <div className="flex justify-between text-gray-600">
                         <span>Precio base</span>
@@ -1341,7 +1362,7 @@ export default function ReservaForm() {
                       </div>
                       <div className="flex justify-between text-red-600 font-medium">
                         <span>Descuento</span>
-                        <span>− ${Math.min(Number(form.descuento_monto), montoBaseDescuento).toLocaleString('es-AR')}</span>
+                        <span>− ${Number(form.descuento_monto).toLocaleString('es-AR')}</span>
                       </div>
                       <div className="flex justify-between font-bold text-gray-800 border-t border-green-200 pt-1.5">
                         <span>Total final</span>

@@ -1,13 +1,15 @@
-// El descuento de ReservaForm.jsx pasó de ser un PORCENTAJE a un MONTO
-// FIJO en pesos (requerimiento real del negocio, confirmado
-// 2026-09-28 — la investigación previa había arreglado el % pero el
-// negocio en realidad siempre quiso un monto fijo). Campo renombrado
-// de descuento_porcentaje a descuento_monto; el cálculo pasa de
-// `base * (1 - pct/100)` a `Math.max(0, base - monto)` — el descuento
-// nunca puede llevar el total por debajo de $0. montoBaseDescuento (el
-// precio "antes del descuento", capturado al tildar el checkbox) no
-// cambia de lógica — sigue funcionando igual en creación y en edición,
-// con precio automático o tipeado a mano.
+// El descuento de ReservaForm.jsx es un MONTO FIJO en pesos (no un %),
+// restado directo de montoBaseDescuento (el precio "antes del
+// descuento", capturado al tildar el checkbox — funciona igual en
+// creación y en edición, con precio automático o tipeado a mano).
+//
+// Un monto que supera la base es INVÁLIDO — a diferencia de un diseño
+// anterior que lo clampeaba en silencio a $0, ahora NO se aplica nada:
+// aparece un error junto al input y el total se mantiene en la base
+// (como si no hubiera descuento) hasta que se corrija a un valor
+// válido (0 <= monto <= base). El error es derivado en cada render
+// (descuentoExcedeBase en ReservaForm.jsx), así que desaparece solo
+// apenas se corrige el monto.
 //
 // Estos tests renderizan el componente real y completan/envían el
 // formulario — no reimplementan handleSubmit ni la lógica de descuento.
@@ -34,7 +36,8 @@ const COMPLEJO_VIP = { id: 'complejo-vip', slug: 'cabanas-vip', nombre: 'Cabaña
 // ver ese archivo para el detalle de por qué cada método está ahí. Como
 // nunca se mockea `periodos_precios` con datos reales, precioBaseNeto queda
 // siempre null (sinPeriodo=true) — el escenario "precio tipeado a mano"
-// (el otro escenario, edición, se cubre con `reservaExistente`).
+// / "Precio personalizado" (el otro escenario, edición, se cubre con
+// `reservaExistente`).
 function makeSupabaseMock({ reservaExistente } = {}) {
   let ultimoInsertReservas = null
   let ultimoUpdateReservas = null
@@ -87,7 +90,7 @@ function makeSupabaseMock({ reservaExistente } = {}) {
 
 async function aplicarDescuento(user, montoPesos, motivo) {
   await user.click(screen.getByText('Aplicar descuento'))
-  const montoInput = await screen.findByPlaceholderText('Ej: 5000')
+  const montoInput = await screen.findByTestId('input-descuento-monto')
   await user.clear(montoInput)
   await user.type(montoInput, String(montoPesos))
   if (motivo) {
@@ -95,7 +98,7 @@ async function aplicarDescuento(user, montoPesos, motivo) {
   }
 }
 
-describe('ReservaForm.jsx — descuento en MONTO FIJO con precio manual (creación, código real)', () => {
+describe('ReservaForm.jsx — descuento en MONTO FIJO con precio manual/"Precio personalizado" (creación, código real)', () => {
   let mockSupabase
 
   beforeEach(() => {
@@ -121,7 +124,7 @@ describe('ReservaForm.jsx — descuento en MONTO FIJO con precio manual (creaci�
     await user.type(screen.getByTestId('input-monto-total'), '1000')
   }
 
-  it('un descuento parcial ($200 sobre una base de $1000 tipeada a mano) baja el total a $800', async () => {
+  it('un descuento parcial ($200 sobre una base de $1000 tipeada a mano) baja el total a $800, sin error', async () => {
     const user = userEvent.setup()
     render(<MemoryRouter><ReservaForm /></MemoryRouter>)
     await completarDatosBase(user)
@@ -129,6 +132,7 @@ describe('ReservaForm.jsx — descuento en MONTO FIJO con precio manual (creaci�
     await aplicarDescuento(user, 200)
 
     await waitFor(() => expect(screen.getByTestId('input-monto-total')).toHaveValue(800))
+    expect(screen.queryByTestId('error-descuento-excede')).not.toBeInTheDocument()
   })
 
   it('un descuento parcial se guarda en el insert (monto_total, descuento_monto, descuento_motivo) y sigue disparando email/vencimiento', async () => {
@@ -149,35 +153,70 @@ describe('ReservaForm.jsx — descuento en MONTO FIJO con precio manual (creaci�
     await waitFor(() => expect(sendEmailConfirmacion).toHaveBeenCalled())
   })
 
-  it('un descuento que SUPERA la base ($1500 sobre $1000) se clampea a $0 — nunca un total negativo — y se comporta como cualquier reserva a $0: sin email, sin vencimiento', async () => {
+  it('un descuento EXACTAMENTE IGUAL a la base ($1000 sobre $1000) es válido — total $0, sin error, y se comporta como cualquier reserva a $0', async () => {
     const user = userEvent.setup()
     render(<MemoryRouter><ReservaForm /></MemoryRouter>)
     await completarDatosBase(user)
+    await aplicarDescuento(user, 1000)
 
-    await aplicarDescuento(user, 1500)
     await waitFor(() => expect(screen.getByTestId('input-monto-total')).toHaveValue(0))
-
-    // El desglose muestra el descuento EFECTIVO ($1000, lo que
-    // realmente se restó), no lo tipeado crudo ($1500) — así el clamp
-    // queda visible en vez de silencioso.
+    expect(screen.queryByTestId('error-descuento-excede')).not.toBeInTheDocument()
+    // El desglose SÍ se muestra (es válido): Precio base $1.000, Descuento − $1.000, Total final $0.
     expect(screen.getByText('− $1.000')).toBeInTheDocument()
-    expect(screen.queryByText('− $1.500')).not.toBeInTheDocument()
 
     await user.click(screen.getByTestId('btn-submit-reserva'))
 
     await waitFor(() => expect(mockSupabase.getUltimoInsertReservas()).not.toBeNull())
     const inserted = mockSupabase.getUltimoInsertReservas()
     expect(Number(inserted.monto_total)).toBe(0)
-    // El monto persistido también es el efectivo (clampeado a la base),
-    // no el tipeado crudo — mismo criterio que el desglose.
     expect(Number(inserted.descuento_monto)).toBe(1000)
-    // No debe especial-casearse "descuento clampeado a $0" como camino
-    // aparte — debe caer naturalmente en los mismos chequeos
-    // monto_total <= 0 ya existentes (debeVencerA48hs /
-    // debeEnviarEmailConfirmacion). Este escenario NO estaba probado
-    // bajo el diseño viejo de porcentaje.
     expect(inserted.fecha_vencimiento).toBeNull()
     expect(sendEmailConfirmacion).not.toHaveBeenCalled()
+  })
+
+  it('un descuento UN PESO por encima de la base ($1001 sobre $1000) es INVÁLIDO — muestra error, el total se mantiene en $1000 sin cambios', async () => {
+    const user = userEvent.setup()
+    render(<MemoryRouter><ReservaForm /></MemoryRouter>)
+    await completarDatosBase(user)
+
+    await aplicarDescuento(user, 1001)
+
+    await waitFor(() => expect(screen.getByTestId('error-descuento-excede')).toBeInTheDocument())
+    expect(screen.getByTestId('error-descuento-excede').textContent).toBe(
+      'El descuento no puede ser mayor al monto total ($1.000)'
+    )
+    // El total NO cambia — se queda en la base, como si no hubiera
+    // descuento todavía (nada de clamp a $0 ni ningún otro valor).
+    expect(screen.getByTestId('input-monto-total')).toHaveValue(1000)
+    // El desglose no se muestra mientras es inválido (mostrar "Total
+    // final $1000" con "Descuento -$1001" sería contradictorio).
+    expect(screen.queryByText('Total final')).not.toBeInTheDocument()
+
+    // Si se envía en este estado inválido, no se persiste ningún
+    // descuento — coincide con lo que se ve en pantalla.
+    await user.click(screen.getByTestId('btn-submit-reserva'))
+    await waitFor(() => expect(mockSupabase.getUltimoInsertReservas()).not.toBeNull())
+    const inserted = mockSupabase.getUltimoInsertReservas()
+    expect(Number(inserted.monto_total)).toBe(1000)
+    expect(inserted.descuento_monto).toBeNull()
+    expect(inserted.descuento_motivo).toBeNull()
+  })
+
+  it('escribir un monto que excede la base y después corregirlo hace desaparecer el error y aplica el descuento correcto', async () => {
+    const user = userEvent.setup()
+    render(<MemoryRouter><ReservaForm /></MemoryRouter>)
+    await completarDatosBase(user)
+
+    await aplicarDescuento(user, 1500)
+    await waitFor(() => expect(screen.getByTestId('error-descuento-excede')).toBeInTheDocument())
+    expect(screen.getByTestId('input-monto-total')).toHaveValue(1000)
+
+    const montoInput = screen.getByTestId('input-descuento-monto')
+    await user.clear(montoInput)
+    await user.type(montoInput, '300')
+
+    await waitFor(() => expect(screen.queryByTestId('error-descuento-excede')).not.toBeInTheDocument())
+    expect(screen.getByTestId('input-monto-total')).toHaveValue(700)
   })
 
   it('un descuento de $0 (o vacío) no cambia el total — se comporta como si no hubiera descuento, sigue > $0', async () => {
@@ -188,6 +227,7 @@ describe('ReservaForm.jsx — descuento en MONTO FIJO con precio manual (creaci�
     await user.click(screen.getByText('Aplicar descuento'))
     // No se tipea nada en el monto — queda vacío.
     await waitFor(() => expect(screen.getByTestId('input-monto-total')).toHaveValue(1000))
+    expect(screen.queryByTestId('error-descuento-excede')).not.toBeInTheDocument()
 
     await user.click(screen.getByTestId('btn-submit-reserva'))
 
@@ -235,15 +275,19 @@ describe('ReservaForm.jsx — descuento en MONTO FIJO al EDITAR una reserva exis
     sendEmailConfirmacion.mockResolvedValue(new Date().toISOString())
   })
 
-  it('tildar "Aplicar descuento" y poner $200 en edición baja el total de $1000 a $800, y se persiste en el update', async () => {
-    const user = userEvent.setup()
-    render(
+  function renderEnEdicion() {
+    return render(
       <MemoryRouter initialEntries={['/cabanas-vip/reservas/reserva-existente-id/editar']}>
         <Routes>
           <Route path="/:complejoSlug/reservas/:id/editar" element={<ReservaForm />} />
         </Routes>
       </MemoryRouter>
     )
+  }
+
+  it('tildar "Aplicar descuento" y poner $200 en edición baja el total de $1000 a $800, y se persiste en el update', async () => {
+    const user = userEvent.setup()
+    renderEnEdicion()
 
     await waitFor(() => expect(screen.getByTestId('input-monto-total')).toHaveValue(1000))
 
@@ -260,21 +304,35 @@ describe('ReservaForm.jsx — descuento en MONTO FIJO al EDITAR una reserva exis
     expect(updated.descuento_motivo).toBe('Reprogramación')
   })
 
-  it('un descuento en edición que supera la base también se clampea a $0 (no negativo)', async () => {
+  it('un descuento en edición que supera la base es inválido — muestra error, el total se mantiene en $1000', async () => {
     const user = userEvent.setup()
-    render(
-      <MemoryRouter initialEntries={['/cabanas-vip/reservas/reserva-existente-id/editar']}>
-        <Routes>
-          <Route path="/:complejoSlug/reservas/:id/editar" element={<ReservaForm />} />
-        </Routes>
-      </MemoryRouter>
-    )
+    renderEnEdicion()
 
     await waitFor(() => expect(screen.getByTestId('input-monto-total')).toHaveValue(1000))
 
     await aplicarDescuento(user, 5000)
 
-    await waitFor(() => expect(screen.getByTestId('input-monto-total')).toHaveValue(0))
-    expect(screen.queryByTestId('input-monto-total')).not.toHaveValue(-4000)
+    await waitFor(() => expect(screen.getByTestId('error-descuento-excede')).toBeInTheDocument())
+    expect(screen.getByTestId('error-descuento-excede').textContent).toBe(
+      'El descuento no puede ser mayor al monto total ($1.000)'
+    )
+    expect(screen.getByTestId('input-monto-total')).toHaveValue(1000)
+  })
+
+  it('en edición, corregir un monto inválido a uno válido hace desaparecer el error y aplica el descuento', async () => {
+    const user = userEvent.setup()
+    renderEnEdicion()
+
+    await waitFor(() => expect(screen.getByTestId('input-monto-total')).toHaveValue(1000))
+
+    await aplicarDescuento(user, 5000)
+    await waitFor(() => expect(screen.getByTestId('error-descuento-excede')).toBeInTheDocument())
+
+    const montoInput = screen.getByTestId('input-descuento-monto')
+    await user.clear(montoInput)
+    await user.type(montoInput, '1000')
+
+    await waitFor(() => expect(screen.queryByTestId('error-descuento-excede')).not.toBeInTheDocument())
+    expect(screen.getByTestId('input-monto-total')).toHaveValue(0)
   })
 })
