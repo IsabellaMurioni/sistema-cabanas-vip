@@ -866,7 +866,10 @@ const emptyTransfer = () => ({
   comprobante: '',
 })
 
-function CajaTransfer({ tabla, titulo, reservas }) {
+// Exportado (además del default) para que los tests unitarios puedan
+// renderizarlo directo, sin montar todo Caja.jsx con sus tabs — mismo
+// motivo/patrón que MONTO_MINIMO_VIP/cumpleMontoMinimoVip más arriba.
+export function CajaTransfer({ tabla, titulo, reservas }) {
   const { complejoActivo } = useComplejo()
   const [rows, setRows]       = useState([])
   const [loading, setLoading] = useState(true)
@@ -972,7 +975,15 @@ function CajaTransfer({ tabla, titulo, reservas }) {
 
   const toggleChequeado = async (id, current) => {
     setRows(prev => prev.map(r => r.id === id ? { ...r, chequeado: !current } : r))
-    await supabase.from(tabla).update({ chequeado: !current }).eq('id', id)
+    const { error } = await supabase.from(tabla).update({ chequeado: !current }).eq('id', id)
+    if (error) {
+      // Revierte el update optimista de arriba y avisa — antes este
+      // error se descartaba en silencio (ni siquiera se leía {error}),
+      // así que un chequeado que en realidad nunca se guardó quedaba
+      // marcado en pantalla hasta el próximo reload, sin ningún aviso.
+      setRows(prev => prev.map(r => r.id === id ? { ...r, chequeado: current } : r))
+      alert('No se pudo guardar el chequeado. Probá de nuevo.')
+    }
   }
 
   return (
