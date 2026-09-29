@@ -78,6 +78,23 @@ export function sumField(arr, field) {
   return arr.reduce((s, r) => s + (Number(r[field]) || 0), 0)
 }
 
+// Cobrado/pendiente de UNA reserva — cobradoRow siempre capea en
+// monto_total (nunca puede superarlo, ni aunque las señas + pago en
+// cabaña sumen de más por un error de carga), así que
+// cobradoRow + pendienteRow === monto_total siempre, exacto. Por eso
+// "Lo cobrado" + "Lo pendiente" (sumas de esto sobre fReservas)
+// reconcilian sin resto contra "Facturado" (sumField(fReservas,
+// 'monto_total')) — las tres tarjetas suman sobre el mismo conjunto de
+// filas. Mismo criterio para el detalle por reserva más abajo (antes
+// usaba un `cobrado`/`aCobrar` sin capear, que podía dar un "A cobrar"
+// negativo en el caso de sobrepago).
+export function cobradoYPendienteDeReserva(r) {
+  const cobradoRaw = (r.sena1_monto || 0) + (r.sena2_monto || 0) + (r.pago_cabana_monto || 0)
+  const pendienteRow = Math.max((r.monto_total || 0) - cobradoRaw, 0)
+  const cobradoRow = (r.monto_total || 0) - pendienteRow
+  return { cobradoRow, pendienteRow }
+}
+
 // ─── Complejos NO-VIP: equivalentes desde movimientos_caja ──────────────────
 // Cabañas VIP sigue leyendo de caja_silvia/caja_juli (arriba, sin tocar). El
 // resto de los complejos escriben su ingreso/egreso de "Caja temporada" en
@@ -438,6 +455,14 @@ export default function Ganancias() {
   const reservasIncome = sumField(fReservas, 'monto_total')
   const reservasCount  = fReservas.length
 
+  // "Lo cobrado" / "Lo pendiente" — mismo fReservas que "Facturado"
+  // (mismo período, mismo .neq('estado','Cancelada'), sin ningún otro
+  // filtro por estado: una reserva Pendiente/Confirmada/Finalizada
+  // cuenta igual, tal como ya hace "Facturado" hoy). Ver
+  // cobradoYPendienteDeReserva más arriba para el cálculo por fila.
+  const reservasCobrado = fReservas.reduce((s, r) => s + cobradoYPendienteDeReserva(r).cobradoRow, 0)
+  const reservasPendiente = fReservas.reduce((s, r) => s + cobradoYPendienteDeReserva(r).pendienteRow, 0)
+
   // Juli ingresos/egresos
   const juliIngresos = fJuliMain.filter(r => r.tipo_main === 'ingreso').reduce((s,r) => s + (r.importe||0), 0)
   const juliEgresos  = fJuliMain.filter(r => r.tipo_main === 'egreso').reduce((s,r) => s + (r.importe||0), 0)
@@ -775,9 +800,11 @@ export default function Ganancias() {
           </div>
 
           {/* Secondary stats */}
-          <div className={`grid grid-cols-2 sm:grid-cols-3 ${isVip ? 'lg:grid-cols-6' : 'lg:grid-cols-2'} gap-3`}>
+          <div className={`grid grid-cols-2 sm:grid-cols-3 ${isVip ? 'lg:grid-cols-8' : 'lg:grid-cols-4'} gap-3`}>
             <SummaryCard label="Reservas" value={reservasCount} sub="del período" />
             <SummaryCard label="Facturado" value={ars(reservasIncome)} sub="monto contratado" />
+            <SummaryCard label="Lo cobrado" value={ars(reservasCobrado)} color="green" />
+            <SummaryCard label="Lo pendiente" value={ars(reservasPendiente)} color="red" />
             {isVip && (
               <>
                 <SummaryCard label="Juli ingresos" value={ars(juliIngresos)} color="green" />
@@ -890,8 +917,7 @@ export default function Ganancias() {
                   </thead>
                   <tbody>
                     {fReservas.flatMap((r, i) => {
-                      const cobrado = (r.sena1_monto || 0) + (r.sena2_monto || 0) + (r.pago_cabana_monto || 0)
-                      const aCobrar = (r.monto_total || 0) - cobrado
+                      const { cobradoRow, pendienteRow } = cobradoYPendienteDeReserva(r)
                       const isExp = expandedRows.has(r.id)
                       const toggle = () => setExpandedRows(prev => {
                         const next = new Set(prev)
@@ -914,8 +940,8 @@ export default function Ganancias() {
                           </td>
                           <td className="px-3 py-2.5 text-[#888]">{r.cabana}</td>
                           <td className="px-3 py-2.5 text-right font-semibold text-[#111]">{ars(r.monto_total)}</td>
-                          <td className="px-3 py-2.5 text-right font-semibold text-green-700">{cobrado > 0 ? ars(cobrado) : '—'}</td>
-                          <td className="px-3 py-2.5 text-right font-semibold">{aCobrar > 0 ? <span className="text-red-600">{ars(aCobrar)}</span> : <span className="text-[#aaa]">—</span>}</td>
+                          <td className="px-3 py-2.5 text-right font-semibold text-green-700">{cobradoRow > 0 ? ars(cobradoRow) : '—'}</td>
+                          <td className="px-3 py-2.5 text-right font-semibold">{pendienteRow > 0 ? <span className="text-red-600">{ars(pendienteRow)}</span> : <span className="text-[#aaa]">—</span>}</td>
                         </tr>,
                         isExp && payments.length > 0 ? (
                           <tr key={`${r.id}-d`} className={bg}>
