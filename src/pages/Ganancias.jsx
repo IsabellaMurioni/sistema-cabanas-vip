@@ -427,15 +427,13 @@ export default function Ganancias() {
   const egresoMp    = sumField(fMp, 'egreso')
   const gastoTotal  = gastoSilvia + egresoBanco + egresoMp
 
-  const retiroPesos  = sumField(fSilvia, 'retiro_pesos')  // sin cambios: "retiro" sólo existe en caja_silvia
-  const retiroUSD    = sumField(fSilvia, 'retiro_dolares') // ídem
   const ganancia   = ingARS - gastoTotal
 
   // NO-VIP: mismos totales, desde movimientos_caja, vía resumenMovimientos
-  // (ver resumenPeriodoMovCaja más arriba). Sin equivalente a
-  // ingUSD/retiroPesos/retiroUSD — movimientos_caja no distingue moneda ni
-  // tiene un tipo "retiro" (ver TIPO_LABELS en CajaTemporada.jsx: sólo
-  // ingreso/egreso/prestamo/devolucion) — se omiten para NO-VIP.
+  // (ver resumenPeriodoMovCaja más arriba). Sin equivalente a ingUSD —
+  // movimientos_caja no distingue moneda (ver TIPO_LABELS en
+  // CajaTemporada.jsx: sólo ingreso/egreso/prestamo/devolucion) — se
+  // omite para NO-VIP.
   const ingresosMovCaja = resumenPeriodoMovCaja.ventas
   const gastosMovCaja   = resumenPeriodoMovCaja.gastos
   const gananciaMovCaja = resumenPeriodoMovCaja.ganancia
@@ -800,7 +798,7 @@ export default function Ganancias() {
           </div>
 
           {/* Secondary stats */}
-          <div className={`grid grid-cols-2 sm:grid-cols-3 ${isVip ? 'lg:grid-cols-8' : 'lg:grid-cols-4'} gap-3`}>
+          <div className={`grid grid-cols-2 sm:grid-cols-3 ${isVip ? 'lg:grid-cols-6' : 'lg:grid-cols-4'} gap-3`}>
             <SummaryCard label="Reservas" value={reservasCount} sub="del período" />
             <SummaryCard label="Facturado" value={ars(reservasIncome)} sub="monto contratado" />
             <SummaryCard label="Lo cobrado" value={ars(reservasCobrado)} color="green" />
@@ -809,8 +807,6 @@ export default function Ganancias() {
               <>
                 <SummaryCard label="Juli ingresos" value={ars(juliIngresos)} color="green" />
                 <SummaryCard label="Juli egresos" value={ars(juliEgresos)} color="red" />
-                <SummaryCard label="Retiro pesos" value={ars(retiroPesos)} />
-                <SummaryCard label="Retiro USD" value={usd(retiroUSD)} />
               </>
             )}
           </div>
