@@ -111,7 +111,13 @@ function todayStr() {
 }
 
 // ── CalendarPicker ──────────────────────────────────────────
-function CalendarPicker({ value, onChange, label }) {
+// `className` posiciona el contenedor raíz (para que el header de
+// Disponibilidad pueda hacerlo flex-1 en mobile y volver a su ancho de
+// contenido en desktop) y `triggerClassName` controla el ancho del
+// botón/field en sí (por defecto `w-auto`, igual que antes de esto —
+// ningún otro caller pasa estos props hoy, así que el comportamiento
+// no cambia salvo donde se pasen explícitamente).
+function CalendarPicker({ value, onChange, label, className = '', triggerClassName = 'w-auto' }) {
   const [open, setOpen] = useState(false)
   const [view, setView] = useState(startOfMonth(value))
   const ref = useRef(null)
@@ -131,21 +137,21 @@ function CalendarPicker({ value, onChange, label }) {
   const today = startOfToday()
 
   return (
-    <div className="relative" ref={ref}>
+    <div className={`relative ${className}`} ref={ref}>
       <div>
         {label && <p className="section-label mb-1">{label}</p>}
         <button
           type="button"
           onClick={() => { setView(startOfMonth(value)); setOpen(!open) }}
-          className="field flex items-center gap-2 cursor-pointer w-auto"
+          className={`field flex items-center gap-2 cursor-pointer ${triggerClassName}`}
         >
-          <svg className="w-4 h-4 text-[var(--color-primario)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-4 h-4 text-[var(--color-primario)] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
           </svg>
-          <span className="font-medium text-[#333] capitalize">
+          <span className="font-medium text-[#333] capitalize truncate min-w-0">
             {format(value, "d 'de' MMMM yyyy", { locale: es })}
           </span>
-          <svg className="w-3 h-3 text-[#888]" fill="currentColor" viewBox="0 0 20 20">
+          <svg className="w-3 h-3 text-[#888] flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
             <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
           </svg>
         </button>
@@ -659,26 +665,51 @@ export default function Disponibilidad() {
             {occupiedCount} de {CABANAS.length} cabañas ocupadas hoy
           </p>
         </div>
-        <div className="flex flex-wrap items-end gap-3 ml-auto">
-          <CalendarPicker label="Desde" value={startDate} onChange={handleStartDate} />
-          <CalendarPicker label="Hasta" value={endDate} onChange={handleEndDate} />
-          <div>
-            <p className="section-label mb-1 invisible">btn</p>
-            <button
-              onClick={() => { setShowAll(!showAll); setSelectedCabana(null) }}
-              className={showAll ? 'btn-primary' : 'btn-secondary'}
-            >
-              {showAll ? '← Por cabaña' : 'Ver todas'}
-            </button>
+        <div className="flex flex-col gap-3 w-full sm:w-auto sm:flex-row sm:flex-wrap sm:items-end sm:ml-auto">
+          {/* Grupo 1 — rango de fechas: Desde/Hasta lado a lado, cada uno
+              ~50% del ancho disponible (flex-1). Es una fila explícita a
+              propósito, no algo que dependa de flex-wrap para caer bien —
+              se sostiene incluso en ~390px. En sm:+ se vuelve `display:
+              contents` para que CalendarPicker (con sm:flex-none) vuelva a
+              ser un item suelto de la fila de controles, igual que antes. */}
+          <div className="flex gap-3 sm:contents" data-testid="disponibilidad-header-grupo-fechas">
+            <CalendarPicker
+              label="Desde"
+              value={startDate}
+              onChange={handleStartDate}
+              className="flex-1 min-w-0 sm:flex-none"
+              triggerClassName="w-full sm:w-auto"
+            />
+            <CalendarPicker
+              label="Hasta"
+              value={endDate}
+              onChange={handleEndDate}
+              className="flex-1 min-w-0 sm:flex-none"
+              triggerClassName="w-full sm:w-auto"
+            />
           </div>
-          <div>
-            <p className="section-label mb-1 invisible">btn</p>
-            <button
-              onClick={() => { setStartDate(today); setEndDate(addDays(today, 29)) }}
-              className="btn-secondary"
-            >
-              Hoy
-            </button>
+
+          {/* Grupo 2 — acciones: toggle de vista + "Hoy" juntos, debajo del
+              grupo de fechas. */}
+          <div className="flex gap-3 sm:contents" data-testid="disponibilidad-header-grupo-acciones">
+            <div>
+              <p className="section-label mb-1 invisible">btn</p>
+              <button
+                onClick={() => { setShowAll(!showAll); setSelectedCabana(null) }}
+                className={showAll ? 'btn-primary' : 'btn-secondary'}
+              >
+                {showAll ? '← Por cabaña' : 'Ver todas'}
+              </button>
+            </div>
+            <div>
+              <p className="section-label mb-1 invisible">btn</p>
+              <button
+                onClick={() => { setStartDate(today); setEndDate(addDays(today, 29)) }}
+                className="btn-secondary"
+              >
+                Hoy
+              </button>
+            </div>
           </div>
         </div>
       </div>
