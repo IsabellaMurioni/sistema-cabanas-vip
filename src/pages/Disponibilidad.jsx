@@ -290,6 +290,44 @@ export function DayHeaders({ startDate, numDays }) {
   )
 }
 
+// ── MonthBoundaryLines ───────────────────────────────────────
+// Línea vertical violeta fina en cada límite real entre dos meses
+// VISIBLES uno al lado del otro — reusa agruparDiasPorMes (la misma
+// función que arma la banda de mes en MonthHeaders), no una segunda
+// forma de detectar dónde empieza un mes nuevo. Salta el primer tramo
+// a propósito (i === 0): ese "borde" sería el principio del rango
+// completo, no una transición entre dos meses.
+//
+// Se posiciona absoluto dentro del wrapper de `numDays * DAY_W` que ya
+// envuelve MonthHeaders + DayHeaders + las filas — ese wrapper necesita
+// `position: relative` para esto (ver los dos call sites, en "Ver
+// todas" y "Ver por cabaña": no comparten el mismo wrapper, así que
+// este componente se inserta en los dos lugares). Arranca en `top: 22`
+// (la altura de la banda de MonthHeaders — mismo número que ya usa el
+// `top` sticky de DayHeaders más arriba) para no pasar por encima de la
+// banda de mes, sólo atravesar la fila de día y las filas de cabañas.
+export function MonthBoundaryLines({ startDate, numDays }) {
+  const tramos = agruparDiasPorMes(startDate, numDays)
+  let offset = 0
+  const bordes = []
+  tramos.forEach((tramo, i) => {
+    if (i > 0) bordes.push(offset)
+    offset += tramo.dias
+  })
+  return bordes.map((dayIndex) => (
+    <div
+      key={dayIndex}
+      data-testid="linea-limite-mes"
+      style={{
+        position: 'absolute', top: 22, bottom: 0,
+        left: dayIndex * DAY_W,
+        width: 2, backgroundColor: '#7c6fae',
+        zIndex: 15, pointerEvents: 'none',
+      }}
+    />
+  ))
+}
+
 // ── TimelineRow ─────────────────────────────────────────────
 function TimelineRow({ cabana, reservas, startDate, endDate, height = 40, onReservaClick }) {
   const { getCabanaColor } = useComplejo()
@@ -733,9 +771,10 @@ export default function Disponibilidad() {
               </div>
 
               {/* Right: day columns */}
-              <div style={{ width: numDays * DAY_W, minWidth: numDays * DAY_W, flexShrink: 0 }}>
+              <div style={{ width: numDays * DAY_W, minWidth: numDays * DAY_W, flexShrink: 0, position: 'relative' }}>
                 <MonthHeaders startDate={startDate} numDays={numDays} />
                 <DayHeaders startDate={startDate} numDays={numDays} />
+                <MonthBoundaryLines startDate={startDate} numDays={numDays} />
                 {cabanasPorGrupo.map((seccion, si) => (
                   <Fragment key={seccion.grupo || `sin-grupo-${si}`}>
                     {seccion.grupo && (
@@ -962,9 +1001,10 @@ export default function Disponibilidad() {
                     vista "Ver todas": necesita altura acotada real para que
                     el sticky de MonthHeaders/DayHeaders funcione. */}
                 <div style={{ overflow: 'auto', maxHeight: GRID_MAX_H }}>
-                  <div style={{ width: numDays * DAY_W, minWidth: numDays * DAY_W }}>
+                  <div style={{ width: numDays * DAY_W, minWidth: numDays * DAY_W, position: 'relative' }}>
                     <MonthHeaders startDate={startDate} numDays={numDays} />
                     <DayHeaders startDate={startDate} numDays={numDays} />
+                    <MonthBoundaryLines startDate={startDate} numDays={numDays} />
                     <TimelineRow
                       cabana={selectedCabana}
                       reservas={reservas}
