@@ -3,7 +3,7 @@
 // esta función pura — lo que hay que probar es la lógica real de
 // agrupación, no re-renderizar el componente.
 import { describe, it, expect } from 'vitest'
-import { agruparDiasPorMes } from '../../src/pages/Disponibilidad'
+import { agruparDiasPorMes, inicialDeMes } from '../../src/pages/Disponibilidad'
 
 describe('agruparDiasPorMes (código real)', () => {
   it('un rango dentro de un solo mes da un único tramo con todos los días', () => {
@@ -44,5 +44,20 @@ describe('agruparDiasPorMes (código real)', () => {
 
   it('numDays=0 no da ningún tramo, no explota', () => {
     expect(agruparDiasPorMes(new Date(2026, 5, 15), 0)).toEqual([])
+  })
+})
+
+describe('inicialDeMes (código real)', () => {
+  it('devuelve la primera letra del mes, en mayúscula', () => {
+    expect(inicialDeMes(new Date(2026, 8, 15))).toBe('S') // septiembre
+    expect(inicialDeMes(new Date(2026, 9, 1))).toBe('O')  // octubre
+    expect(inicialDeMes(new Date(2026, 0, 5))).toBe('E')  // enero
+    expect(inicialDeMes(new Date(2026, 11, 25))).toBe('D') // diciembre
+  })
+
+  it('usa el mismo nombre de mes (vía date-fns/es) que ya usa agruparDiasPorMes, así que nunca puede desincronizarse del label de la banda', () => {
+    const dia = new Date(2026, 8, 28)
+    const [tramo] = agruparDiasPorMes(dia, 1)
+    expect(tramo.label.charAt(0).toUpperCase()).toBe(inicialDeMes(dia))
   })
 })

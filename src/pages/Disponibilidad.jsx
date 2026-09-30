@@ -89,6 +89,17 @@ export function agruparDiasPorMes(startDate, numDays) {
   return tramos
 }
 
+// Letra inicial del mes de un día (ej. "S" para septiembre, "O" para
+// octubre) — se muestra arriba del número de día en DayHeaders, para
+// distinguir a qué mes pertenece cada columna sin tener que mirar la
+// banda de mes. Usa el mismo `format(..., 'MMMM', { locale: es })` que
+// ya usa agruparDiasPorMes para el label de la banda — no es un
+// segundo cálculo de fecha que se pueda desincronizar del real, sólo
+// toma la primera letra del mismo nombre de mes.
+export function inicialDeMes(date) {
+  return format(date, 'MMMM', { locale: es }).charAt(0).toUpperCase()
+}
+
 function startOfToday() {
   const d = new Date()
   d.setHours(0, 0, 0, 0)
@@ -235,7 +246,11 @@ function MonthHeaders({ startDate, numDays }) {
 }
 
 // ── DayHeaders ──────────────────────────────────────────────
-function DayHeaders({ startDate, numDays }) {
+// Exportado (además del default) para que los tests unitarios puedan
+// renderizarlo directo — es el único lugar donde vive la letra inicial
+// de mes (arriba del número de día), y lo comparten "Ver todas" y
+// "Ver por cabaña" (ver los dos <DayHeaders> más abajo).
+export function DayHeaders({ startDate, numDays }) {
   const today = startOfToday()
   return (
     <div style={{
@@ -259,6 +274,9 @@ function DayHeaders({ startDate, numDays }) {
               userSelect: 'none',
             }}
           >
+            <div data-testid="dia-inicial-mes" style={{ fontSize: 7, fontWeight: 700, lineHeight: 1.2, letterSpacing: '0.02em', color: isToday ? '#fb923c' : '#888' }}>
+              {inicialDeMes(day)}
+            </div>
             <div style={{ fontSize: 12, fontWeight: 700, lineHeight: 1.2, color: isToday ? '#ea580c' : '#333' }}>
               {format(day, 'd')}
             </div>
