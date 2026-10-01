@@ -150,6 +150,107 @@ export function calcularAnchoColumnaNombres(nombresCabanas) {
   return Math.ceil(anchoMaximoTexto + OVERHEAD_COLUMNA_NOMBRE + BUFFER_COLUMNA_NOMBRE)
 }
 
+// ── Columna de nombres en mobile "Ver todas" ─────────────────
+// En mobile, a diferencia de desktop, la columna NO se calcula por
+// complejo en vivo — es un ancho FIJO, igual en los 5 complejos, para
+// que todos los complejos liberen el máximo espacio posible para la
+// grilla de días en una pantalla chica. El texto deja de truncarse acá
+// (sin whiteSpace:nowrap/ellipsis, ver el <span> de la celda) y
+// wrapea normalmente en vez.
+//
+// Por qué un ancho fijo hardcodeado y no calcularAnchoColumnaNombres
+// de otro complejo en vivo: RLS restringe la tabla `cabanas` por
+// membresía de complejo (confirmado empíricamente con el usuario de
+// test limitado — 0 filas al pedir las cabañas de un complejo ajeno),
+// así que un usuario viendo Mimmo en general NO puede leer los
+// nombres reales de otro complejo para recalcular esto en vivo.
+//
+// El valor de abajo es ceil(ancho de "Departamento", la PALABRA más
+// larga entre los 5 complejos — no el nombre completo más largo, la
+// palabra sin cortes dentro de un nombre — + overhead + buffer).
+// "Departamento" (Los Amigos) no tiene espacios, así que no puede
+// wrapear dentro de sí misma — si el ancho de columna fuera menor al
+// de esta palabra, desbordaría el borde de la columna en vez de
+// wrapear. Medido en vivo contra Canvas real (Chromium): 83.09px. Si
+// alguna vez se agrega una cabaña con un nombre (o una palabra suelta
+// dentro de un nombre) más ancho que esto en cualquier complejo, hay
+// que revisar este número a mano — ver
+// tests/unit/disponibilidad-mobile-nombres.test.jsx, que falla si
+// cualquier palabra real no entra.
+export const ANCHO_COLUMNA_NOMBRE_MOBILE = 127
+
+// Line-height del <span> de nombre en mobile (ver el <span> de la
+// celda) — 12px * 1.3, mismo multiplicador en ambos lugares para que
+// esta cuenta no se desincronice de lo que el navegador renderiza.
+const ALTURA_LINEA_NOMBRE_MOBILE = 15.6
+// Espacio vertical de "respiro" alrededor del bloque de texto
+// wrapeado dentro de la fila (no es padding real de la celda — la
+// fila centra su contenido con alignItems:center — es sólo lo que se
+// le suma a la altura mínima de fila para que el texto de 2 líneas no
+// quede pegado a los bordes).
+const PADDING_VERTICAL_FILA_MOBILE = 20
+
+// Cuenta cuántas líneas necesita `texto` al wrapear "normal" (rompe
+// sólo en espacios, nunca mid-word) dentro de `anchoDisponible` —
+// mismo algoritmo greedy que usa un navegador para white-space:normal,
+// implementado con los mismos anchos de Canvas que ya usa
+// anchoTextoPx, para que la cuenta de líneas no se desincronice de lo
+// que se ve de verdad.
+export function contarLineasNecesarias(texto, anchoDisponible) {
+  const palabras = texto.split(' ')
+  const anchoEspacio = anchoTextoPx(' ') ?? 0
+  let lineas = 1
+  let anchoLineaActual = 0
+  palabras.forEach((palabra) => {
+    const anchoPalabra = anchoTextoPx(palabra) ?? 0
+    const candidato = anchoLineaActual === 0 ? anchoPalabra : anchoLineaActual + anchoEspacio + anchoPalabra
+    if (candidato <= anchoDisponible || anchoLineaActual === 0) {
+      anchoLineaActual = candidato
+    } else {
+      lineas += 1
+      anchoLineaActual = anchoPalabra
+    }
+  })
+  return lineas
+}
+
+// Altura de fila mobile para que CUALQUIER nombre de `nombresCabanas`
+// (el complejo activo) entre completo, sin cortarse — toma el peor
+// caso (más líneas necesarias) de ese complejo específico. Complejos
+// con nombres cortos (p. ej. Cabañas VIP) dan 1 línea acá y no
+// cambian nada frente al piso dinámico ya existente
+// (Math.max(ROW_H, TARGET_MIN_H_TODAS/numCabanas)); sólo complejos con
+// nombres que de verdad necesitan 2+ líneas (p. ej. Mimmo) hacen crecer
+// la fila más allá de ese piso.
+export function calcularAlturaFilaMobile(nombresCabanas) {
+  if (!nombresCabanas || nombresCabanas.length === 0) return 0
+  const anchoDisponibleTexto = ANCHO_COLUMNA_NOMBRE_MOBILE - OVERHEAD_COLUMNA_NOMBRE
+  const maxLineas = Math.max(
+    ...nombresCabanas.map((n) => contarLineasNecesarias(n, anchoDisponibleTexto))
+  )
+  return Math.ceil(maxLineas * ALTURA_LINEA_NOMBRE_MOBILE + PADDING_VERTICAL_FILA_MOBILE)
+}
+
+// Breakpoint mobile — mismo que el `sm:` de Tailwind (640px) que ya
+// usa el header de este archivo, para que "mobile" signifique lo
+// mismo en todo Disponibilidad.jsx. window.innerWidth (no matchMedia):
+// jsdom lo implementa con un default razonable (1024, "desktop") sin
+// necesitar mock — así los tests existentes que no tocan esto no
+// cambian de comportamiento.
+const BREAKPOINT_MOBILE = 640
+
+function useEsMobile() {
+  const [esMobile, setEsMobile] = useState(
+    () => typeof window !== 'undefined' && window.innerWidth < BREAKPOINT_MOBILE
+  )
+  useEffect(() => {
+    const handler = () => setEsMobile(window.innerWidth < BREAKPOINT_MOBILE)
+    window.addEventListener('resize', handler)
+    return () => window.removeEventListener('resize', handler)
+  }, [])
+  return esMobile
+}
+
 function startOfToday() {
   const d = new Date()
   d.setHours(0, 0, 0, 0)
@@ -645,14 +746,17 @@ export default function Disponibilidad() {
   const [popup, setPopup] = useState(null)
 
   const numDays = differenceInDays(endDate, startDate) + 1
+  const esMobile = useEsMobile()
 
-  // Ancho de la columna de nombres de cabaña en "Ver todas" — depende
-  // sólo de los nombres del complejo activo (ver
-  // calcularAnchoColumnaNombres más arriba), así que se recalcula cada
-  // vez que cambian.
+  // Ancho de la columna de nombres de cabaña en "Ver todas". Desktop:
+  // sin cambios, por complejo y en vivo (calcularAnchoColumnaNombres).
+  // Mobile: ancho fijo igual en los 5 complejos (ver
+  // ANCHO_COLUMNA_NOMBRE_MOBILE más arriba, por qué no se calcula en
+  // vivo ahí). Esta variable sólo se usa dentro de "Ver todas" — no
+  // afecta "Ver por cabaña" en ningún ancho.
   const anchoColumnaNombres = useMemo(
-    () => calcularAnchoColumnaNombres(CABANAS),
-    [CABANAS]
+    () => (esMobile ? ANCHO_COLUMNA_NOMBRE_MOBILE : calcularAnchoColumnaNombres(CABANAS)),
+    [esMobile, CABANAS]
   )
 
   // Guard contra respuesta obsoleta — mismo patrón/motivo que
@@ -711,8 +815,21 @@ export default function Disponibilidad() {
   // cabañas, sin casos especiales por complejo. Sólo para "Ver todas" —
   // "Ver por cabaña" usa ROW_H_SINGLE (fijo, ver comentario ahí), NO este
   // `rowH`.
+  //
+  // En mobile se le suma un piso más: la altura que el nombre de
+  // cabaña más exigente DE ESE complejo necesita para wrapear sin
+  // cortarse (ver calcularAlturaFilaMobile) — complejos con nombres
+  // cortos (1 línea) no cambian nada frente al piso de arriba; sólo
+  // complejos con nombres que necesitan 2+ líneas (p. ej. Mimmo) crecen
+  // más allá de él. Es un único `rowH` compartido por todas las filas
+  // en los dos casos, así que la altura sigue siendo uniforme dentro
+  // de un mismo complejo.
   const numCabanas = CABANAS.length || 1
-  const rowH = Math.max(ROW_H, TARGET_MIN_H_TODAS / numCabanas)
+  const rowH = useMemo(() => {
+    const base = Math.max(ROW_H, TARGET_MIN_H_TODAS / numCabanas)
+    if (!esMobile) return base
+    return Math.max(base, calcularAlturaFilaMobile(CABANAS))
+  }, [esMobile, numCabanas, CABANAS])
 
   return (
     <div className="flex flex-col h-full fade-in">
@@ -850,7 +967,12 @@ export default function Disponibilidad() {
                             width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
                             backgroundColor: st?.occupied ? getCabanaColor(cabana) : '#4ade80',
                           }} />
-                          <span style={{ fontSize: 12, fontWeight: 600, color: '#333', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          <span style={{
+                            fontSize: 12, fontWeight: 600, color: '#333', minWidth: 0,
+                            ...(esMobile
+                              ? { whiteSpace: 'normal', lineHeight: `${ALTURA_LINEA_NOMBRE_MOBILE}px` }
+                              : { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }),
+                          }}>
                             {cabana}
                           </span>
                         </div>
