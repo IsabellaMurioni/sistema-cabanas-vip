@@ -100,6 +100,56 @@ export function inicialDeMes(date) {
   return format(date, 'MMMM', { locale: es }).charAt(0).toUpperCase()
 }
 
+// ── Ancho dinámico de la columna de nombres de cabaña ("Ver todas") ──
+// Reemplaza el viejo ancho fijo de 136px: con 136px fijo, los 4
+// nombres más largos de Mimmo ("Dos Ambientes Planta Baja 4/5",
+// "Dos Ambientes Planta Alta 6/7", 27 caracteres) quedaban truncados
+// con "...", mientras que complejos con nombres cortos (Cabañas VIP,
+// Casas Azahar, Chacras del Mar, Los Amigos) desperdiciaban espacio de
+// sobra. Ahora se calcula por complejo: el nombre de cabaña más largo
+// DE ESE complejo, medido con Canvas 2D (mismo font que el <span> real
+// de la celda, más abajo: 600 12px Inter), más el overhead fijo
+// no-texto de esa celda (OVERHEAD_COLUMNA_NOMBRE) y un margen de
+// seguridad chico para variación de sub-píxel entre navegadores.
+//
+// Por qué Canvas y no medir un <span> en el DOM: funciona igual en
+// producción (preciso, se adapta solo a cualquier nombre nuevo sin
+// mantenimiento) y en jsdom los tests mockean
+// HTMLCanvasElement.getContext con anchos calibrados contra el
+// navegador real — ver tests/setup/vitest.setup.js y
+// tests/unit/disponibilidad-ancho-columna-nombres.test.jsx.
+const FONT_COLUMNA_NOMBRE = "600 12px 'Inter', system-ui, -apple-system, sans-serif"
+
+// borderLeft(3) + paddingLeft(10) + dot(8) + gap(8) + paddingRight(8)
+// de la celda de nombre de cabaña (ver el <div> de la fila dentro de
+// "Ver todas" más abajo) — si alguno de esos valores cambia ahí, hay
+// que actualizar este número también.
+const OVERHEAD_COLUMNA_NOMBRE = 37
+const BUFFER_COLUMNA_NOMBRE = 6
+// Sólo se usa si todavía no hay cabañas cargadas (loading) o si
+// Canvas no está disponible por algún motivo — nunca en el camino
+// normal con cabañas ya cargadas.
+const ANCHO_COLUMNA_NOMBRE_FALLBACK = 136
+
+let ctxMedicionTexto = null
+function anchoTextoPx(texto) {
+  if (typeof document === 'undefined') return null
+  if (!ctxMedicionTexto) {
+    ctxMedicionTexto = document.createElement('canvas').getContext('2d')
+  }
+  if (!ctxMedicionTexto) return null
+  ctxMedicionTexto.font = FONT_COLUMNA_NOMBRE
+  return ctxMedicionTexto.measureText(texto).width
+}
+
+export function calcularAnchoColumnaNombres(nombresCabanas) {
+  if (!nombresCabanas || nombresCabanas.length === 0) return ANCHO_COLUMNA_NOMBRE_FALLBACK
+  const anchos = nombresCabanas.map((n) => anchoTextoPx(n)).filter((w) => w !== null)
+  if (anchos.length === 0) return ANCHO_COLUMNA_NOMBRE_FALLBACK
+  const anchoMaximoTexto = Math.max(...anchos)
+  return Math.ceil(anchoMaximoTexto + OVERHEAD_COLUMNA_NOMBRE + BUFFER_COLUMNA_NOMBRE)
+}
+
 function startOfToday() {
   const d = new Date()
   d.setHours(0, 0, 0, 0)
@@ -596,6 +646,15 @@ export default function Disponibilidad() {
 
   const numDays = differenceInDays(endDate, startDate) + 1
 
+  // Ancho de la columna de nombres de cabaña en "Ver todas" — depende
+  // sólo de los nombres del complejo activo (ver
+  // calcularAnchoColumnaNombres más arriba), así que se recalcula cada
+  // vez que cambian.
+  const anchoColumnaNombres = useMemo(
+    () => calcularAnchoColumnaNombres(CABANAS),
+    [CABANAS]
+  )
+
   // Guard contra respuesta obsoleta — mismo patrón/motivo que
   // Ganancias.jsx (complejoActivo pasa por un default antes de que
   // Layout.jsx lo corrija al slug de la URL; sin esto, el fetch del
@@ -745,9 +804,9 @@ export default function Disponibilidad() {
               con el scroll horizontal. Ver comentario de GRID_MAX_H sobre
               por qué el contenedor necesita una altura acotada real. */}
           <div style={{ overflow: 'auto', maxHeight: GRID_MAX_H }}>
-            <div style={{ display: 'flex', width: 136 + numDays * DAY_W, minWidth: 136 + numDays * DAY_W }}>
+            <div style={{ display: 'flex', width: anchoColumnaNombres + numDays * DAY_W, minWidth: anchoColumnaNombres + numDays * DAY_W }}>
               {/* Left: cabin names — congelada horizontalmente */}
-              <div style={{ width: 136, minWidth: 136, flexShrink: 0, position: 'sticky', left: 0, zIndex: 22, borderRight: '1px solid #f0e6d8' }}>
+              <div style={{ width: anchoColumnaNombres, minWidth: anchoColumnaNombres, flexShrink: 0, position: 'sticky', left: 0, zIndex: 22, borderRight: '1px solid #f0e6d8' }}>
                 {/* Header spacer — esquina congelada (sticky top, hereda el sticky-left del padre) */}
                 <div style={{
                   height: 66, borderBottom: '1px solid #f0e6d8', backgroundColor: 'var(--color-secundario)',
