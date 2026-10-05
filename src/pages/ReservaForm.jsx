@@ -1052,7 +1052,7 @@ export default function ReservaForm() {
             Información del huésped
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="col-span-2">
+            <div className="sm:col-span-2">
               <Field label="Nombre y apellido" required>
                 <input
                   type="text"
@@ -1094,7 +1094,7 @@ export default function ReservaForm() {
                 placeholder="+54 9 11 1234-5678"
               />
             </Field>
-            <div className="col-span-2">
+            <div className="sm:col-span-2">
               <Field label="Dirección">
                 <input
                   type="text"
@@ -1169,7 +1169,7 @@ export default function ReservaForm() {
               </Field>
             )}
             {form.cabana && ocupadas.length > 0 && (
-              <div className="col-span-2 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">
+              <div className="sm:col-span-2 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">
                 <p className="text-xs font-semibold text-orange-700 mb-1.5">Fechas ya reservadas en {form.cabana}:</p>
                 <div className="flex flex-wrap gap-1.5">
                   {ocupadas.map((o, i) => {
@@ -1226,12 +1226,12 @@ export default function ReservaForm() {
               />
             </Field>
             {fechaConflicto && (
-              <div className="col-span-2 bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2 text-sm font-medium">
+              <div className="sm:col-span-2 bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2 text-sm font-medium">
                 {fechaConflicto}
               </div>
             )}
             {minimoNochesError && (
-              <div className="col-span-2 bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2 text-sm font-medium">
+              <div className="sm:col-span-2 bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2 text-sm font-medium">
                 {minimoNochesError}
               </div>
             )}
@@ -1292,7 +1292,7 @@ export default function ReservaForm() {
             </Field>
 
             {/* Descuento */}
-            <div className="col-span-2 pt-1">
+            <div className="sm:col-span-2 pt-1">
               <label className="flex items-center gap-2 cursor-pointer w-fit mb-3">
                 <input
                   type="checkbox"
@@ -1408,7 +1408,7 @@ export default function ReservaForm() {
                   <option>Mercado Pago</option>
                 </select>
               </Field>
-              <div className="col-span-2">
+              <div className="sm:col-span-2">
                 <Field label="Fecha">
                   <input
                     type="date"
@@ -1419,7 +1419,7 @@ export default function ReservaForm() {
                   />
                 </Field>
               </div>
-              <div className="col-span-2">
+              <div className="sm:col-span-2">
                 <FileUpload
                   label="Comprobante (foto o PDF)"
                   path={form.sena1_comprobante}
@@ -1453,7 +1453,7 @@ export default function ReservaForm() {
                   <option>Mercado Pago</option>
                 </select>
               </Field>
-              <div className="col-span-2">
+              <div className="sm:col-span-2">
                 <Field label="Fecha">
                   <input
                     type="date"
@@ -1463,7 +1463,7 @@ export default function ReservaForm() {
                   />
                 </Field>
               </div>
-              <div className="col-span-2">
+              <div className="sm:col-span-2">
                 <FileUpload
                   label="Comprobante (foto o PDF)"
                   path={form.sena2_comprobante}
@@ -1496,7 +1496,7 @@ export default function ReservaForm() {
                   className={inputClass}
                 />
               </Field>
-              <div className="col-span-2">
+              <div className="sm:col-span-2">
                 <FileUpload
                   label="Comprobante (foto o PDF)"
                   path={form.pago_cabana_comprobante}
