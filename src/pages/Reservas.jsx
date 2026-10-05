@@ -47,8 +47,11 @@ const estadoBadge = {
   Cancelada:  'badge badge-cancelada',
 }
 
-function CabanaBadge({ cabana }) {
-  const { getCabanaColor, cabanasPorGrupo } = useComplejo()
+// Una sola cabaña (el caso de hoy, sin cambios): grupo opcional arriba
+// + badge de color. Se reusa tal cual para cada línea cuando `cabana`
+// trae varias (reservas multi-cabaña, ver ReservaForm.jsx: `cabana`
+// queda con los nombres unidos por "\n").
+function UnaCabanaBadge({ cabana, getCabanaColor, cabanasPorGrupo }) {
   const grupo = cabanasPorGrupo.find((s) => s.cabanas.includes(cabana))?.grupo
   return (
     <div className="inline-flex flex-col items-start gap-0.5">
@@ -63,6 +66,63 @@ function CabanaBadge({ cabana }) {
       >
         {cabana}
       </span>
+    </div>
+  )
+}
+
+function CabanaBadge({ cabana }) {
+  const { getCabanaColor, cabanasPorGrupo } = useComplejo()
+  const nombres = (cabana || '').split('\n').filter(Boolean)
+
+  // Una sola cabaña (o ninguna): exactamente el render de siempre, sin
+  // envoltorio extra — nada cambia para el caso común.
+  if (nombres.length <= 1) {
+    return <UnaCabanaBadge cabana={cabana} getCabanaColor={getCabanaColor} cabanasPorGrupo={cabanasPorGrupo} />
+  }
+
+  // Varias cabañas: se agrupan por bloque/grupo primero (mismo
+  // cabanasPorGrupo que ya usa CabinMultiPicker para "MIMMO I"/"MIMMO
+  // II") para que el badge de grupo salga UNA sola vez por grupo — no
+  // una vez por cabaña (bug real reportado: con 2 cabañas de MIMMO I,
+  // "MIMMO I" aparecía duplicado). Orden de primera aparición de cada
+  // grupo, no sólo cabañas consecutivas del mismo grupo — así da lo
+  // mismo en qué orden se hayan tildado las cabañas en el picker.
+  // Varias cabañas: se agrupan por bloque/grupo primero (mismo
+  // cabanasPorGrupo que ya usa CabinMultiPicker para "MIMMO I"/"MIMMO
+  // II") para que el badge de grupo salga UNA sola vez por grupo — no
+  // una vez por cabaña (bug real reportado: con 2 cabañas de MIMMO I,
+  // "MIMMO I" aparecía duplicado). Orden de primera aparición de cada
+  // grupo, no sólo cabañas consecutivas del mismo grupo — así da lo
+  // mismo en qué orden se hayan tildado las cabañas en el picker.
+  const porGrupo = new Map()
+  nombres.forEach((nombreCabana) => {
+    const grupo = cabanasPorGrupo.find((s) => s.cabanas.includes(nombreCabana))?.grupo || null
+    if (!porGrupo.has(grupo)) porGrupo.set(grupo, [])
+    porGrupo.get(grupo).push(nombreCabana)
+  })
+
+  return (
+    <div className="flex flex-col gap-1">
+      {Array.from(porGrupo.entries()).map(([grupo, cabanasDelGrupo], i) => (
+        <div key={grupo || `sin-grupo-${i}`} className="inline-flex flex-col items-start gap-0.5">
+          {grupo && (
+            <span className="text-[9px] font-bold uppercase tracking-wide text-[#888]">
+              {grupo}
+            </span>
+          )}
+          <div className="flex flex-col gap-1">
+            {cabanasDelGrupo.map((nombreCabana) => (
+              <span
+                key={nombreCabana}
+                className="inline-flex items-center px-2 py-0.5 rounded-[8px] text-xs font-semibold text-white"
+                style={{ backgroundColor: getCabanaColor(nombreCabana) }}
+              >
+                {nombreCabana}
+              </span>
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   )
 }
