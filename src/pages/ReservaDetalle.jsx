@@ -99,6 +99,16 @@ export default function ReservaDetalle() {
     Number(reserva.sena2_monto || 0) -
     Number(reserva.pago_cabana_monto || 0)
 
+  // "Resumen económico" → TOTAL: monto_total ya queda guardado
+  // post-descuento (ver handleSubmit en ReservaForm.jsx), así que el
+  // original no es un dato nuevo — se reconstruye sumando lo que ya
+  // está guardado. descuentoMonto > 0 cubre null/0/missing de una — ver
+  // el JSX de abajo, que no agrega nada al DOM cuando es false (no sólo
+  // lo oculta con CSS), para que una reserva sin descuento quede pixel
+  // a pixel igual que hoy.
+  const descuentoMonto = Number(reserva.descuento_monto) || 0
+  const montoOriginal = Number(reserva.monto_total || 0) + descuentoMonto
+
   const hayPagos = reserva.sena1_monto || reserva.sena2_monto || reserva.pago_cabana_monto ||
     reserva.sena1_comprobante || reserva.sena2_comprobante || reserva.pago_cabana_comprobante
 
@@ -170,6 +180,23 @@ export default function ReservaDetalle() {
             <div className="card-sm text-center">
               <p className="section-label mb-1">Total</p>
               <p className="font-bold text-[#111111]">{money(reserva.monto_total)}</p>
+              {descuentoMonto > 0 && (
+                <>
+                  <div className="flex items-baseline justify-center gap-1.5 mt-0.5">
+                    <span style={{ fontSize: 12.5, color: '#A7AEBB', textDecoration: 'line-through' }}>
+                      {money(montoOriginal)}
+                    </span>
+                    <span style={{ fontSize: 12.5, fontWeight: 700, color: '#15803D' }}>
+                      −{money(descuentoMonto)}
+                    </span>
+                  </div>
+                  {reserva.descuento_motivo && (
+                    <p style={{ fontSize: 10.5, color: '#9AA2B1', fontStyle: 'italic' }}>
+                      {reserva.descuento_motivo}
+                    </p>
+                  )}
+                </>
+              )}
             </div>
             <div className="card-sm text-center">
               <p className="section-label mb-1" style={{ color: 'var(--color-primario)' }}>1ª Seña</p>
