@@ -98,6 +98,187 @@ function Field({ label, children, required }) {
 
 const inputClass = "field"
 
+// ── CabinMultiPicker ──────────────────────────────────────────
+// Selector de cabaña(s) al CREAR una reserva (multi-select) —
+// reemplaza el <select multiple> nativo por un control custom, pero
+// NO toca ninguna lógica de abajo: sigue recibiendo `seleccionadas`
+// (cabanasSeleccionadas) y notificando cada toggle vía `onToggle`
+// (ver toggleCabana en el componente principal, que arma
+// form.cabana = seleccionadas.join('\n') igual que antes).
+//
+// Responsive con una sola implementación (no dos componentes): mismo
+// JSX, con clases `sm:` de Tailwind (mismo breakpoint — 640px — que ya
+// usa el header de Disponibilidad.jsx) para que el panel se vea inline
+// bajo el campo en desktop y como bottom sheet con overlay en mobile.
+function CabinMultiPicker({ cabanasPorGrupo, seleccionadas, onToggle }) {
+  const [open, setOpen] = useState(false)
+  const containerRef = useRef(null)
+
+  useEffect(() => {
+    if (!open) return
+    const handler = (e) => {
+      if (containerRef.current && !containerRef.current.contains(e.target)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  const labelListo = seleccionadas.length === 0
+    ? 'Listo'
+    : `Listo · ${seleccionadas.length} seleccionada${seleccionadas.length === 1 ? '' : 's'}`
+
+  return (
+    <div ref={containerRef} className="relative" data-testid="cabana-picker">
+      <button
+        type="button"
+        data-testid="cabana-picker-trigger"
+        onClick={() => setOpen((o) => !o)}
+        style={{
+          display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-start', gap: 6,
+          width: '100%', minHeight: 48, padding: '8px 12px',
+          borderRadius: 10,
+          border: `1px solid ${open ? '#2F6FED' : '#D7DEE8'}`,
+          backgroundColor: '#fff', cursor: 'pointer', textAlign: 'left',
+        }}
+      >
+        {seleccionadas.length === 0 ? (
+          <span style={{ color: '#9AA2B1', fontSize: 14 }}>Seleccionar cabaña</span>
+        ) : (
+          seleccionadas.map((c) => (
+            <span
+              key={c}
+              data-testid={`cabana-picker-chip-${c}`}
+              style={{
+                display: 'inline-flex', alignItems: 'center',
+                padding: '4px 10px', borderRadius: 999,
+                backgroundColor: '#E8F0FE', border: '1px solid #BBD3FB',
+                color: '#1C4ED8', fontWeight: 700, fontSize: 13,
+              }}
+            >
+              {c}
+            </span>
+          ))
+        )}
+      </button>
+      <p className="text-xs text-[#888] mt-1">
+        Tocá el campo y elegí una o varias cabañas. Podés seguir sumando sin que se cierre.
+      </p>
+
+      {open && (
+        <>
+          {/* Overlay oscuro — sólo mobile (el panel desktop es inline, no sheet). */}
+          <div
+            data-testid="cabana-picker-overlay"
+            onClick={() => setOpen(false)}
+            className="sm:hidden fixed inset-0"
+            style={{ backgroundColor: 'rgba(16,22,34,0.45)', zIndex: 50 }}
+          />
+
+          {/* Panel: inline bajo el campo en desktop, bottom sheet en mobile. */}
+          <div
+            data-testid="cabana-picker-panel"
+            className="sm:absolute sm:top-full sm:left-0 sm:bottom-auto sm:mt-2 sm:w-full sm:max-h-[360px] fixed inset-x-0 bottom-0 flex flex-col bg-white"
+            style={{
+              zIndex: 51,
+              maxHeight: 'min(80vh, 480px)',
+              borderRadius: '20px 20px 0 0',
+              boxShadow: '0 10px 30px rgba(16,22,34,0.18)',
+            }}
+          >
+            {/* Header mobile: agarradera + título + cerrar. En desktop el
+                panel no tiene header, va directo a la lista. */}
+            <div className="sm:hidden flex-shrink-0">
+              <div className="mx-auto mt-2 mb-1 h-1 w-10 rounded-full" style={{ backgroundColor: '#D7DEE8' }} />
+              <div className="flex items-center justify-between px-4 py-2">
+                <span className="font-bold text-[#111]">Elegí las cabañas</span>
+                <button
+                  type="button"
+                  data-testid="cabana-picker-close"
+                  onClick={() => setOpen(false)}
+                  className="w-8 h-8 flex items-center justify-center rounded-full text-[#888] hover:bg-[#f0f0f0]"
+                  aria-label="Cerrar"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            {/* Lista agrupada, scrolleable, scrollbar fina custom. */}
+            <div
+              className="overflow-y-auto flex-1 py-1 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-[#D7DEE8] [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-transparent"
+              style={{ scrollbarWidth: 'thin', scrollbarColor: '#D7DEE8 transparent' }}
+            >
+              {cabanasPorGrupo.map((seccion, si) => (
+                <div key={seccion.grupo || `sin-grupo-${si}`}>
+                  {seccion.grupo && (
+                    <div
+                      style={{
+                        backgroundColor: '#04214A', color: '#fff', fontWeight: 700,
+                        padding: '7px 16px', borderRadius: 10, margin: '8px 12px',
+                        fontSize: 13,
+                      }}
+                    >
+                      {seccion.grupo}
+                    </div>
+                  )}
+                  {seccion.cabanas.map((cabana) => {
+                    const checked = seleccionadas.includes(cabana)
+                    return (
+                      <button
+                        type="button"
+                        key={cabana}
+                        data-testid={`cabana-picker-row-${cabana}`}
+                        onClick={() => onToggle(cabana)}
+                        style={{
+                          display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: 12,
+                          width: '100%', minHeight: 48, padding: '0 16px',
+                          backgroundColor: checked ? '#EEF4FF' : '#fff',
+                          border: 'none', textAlign: 'left', cursor: 'pointer',
+                        }}
+                      >
+                        <span
+                          style={{
+                            width: 20, height: 20, borderRadius: 6, flexShrink: 0,
+                            border: checked ? 'none' : '2px solid #C3CAD6',
+                            backgroundColor: checked ? '#2F6FED' : 'transparent',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          }}
+                        >
+                          {checked && (
+                            <svg width="12" height="10" viewBox="0 0 12 10" fill="none">
+                              <path d="M1 5L4.5 8.5L11 1.5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          )}
+                        </span>
+                        <span style={{ fontSize: 14, fontWeight: checked ? 700 : 500, color: '#111' }}>
+                          {cabana}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+              ))}
+            </div>
+
+            {/* Footer fijo — única forma de cerrar en desktop (además del
+                click afuera); en mobile también la X y el overlay. */}
+            <div className="flex-shrink-0 p-3 border-t border-[#f0e6d8] bg-white" style={{ borderRadius: '0 0 14px 14px' }}>
+              <button
+                type="button"
+                data-testid="cabana-picker-listo"
+                onClick={() => setOpen(false)}
+                className="btn-primary w-full py-2.5"
+              >
+                {labelListo}
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 // Dado un tipo de seña, devuelve la tabla de caja correspondiente
 function tablaCajaPorTipo(tipo) {
   if (tipo === 'Mercado Pago') return 'caja_mercado_pago'
@@ -278,6 +459,24 @@ export function getConflicto(entrada, salida, ranges) {
   return ''
 }
 
+// Generaliza getConflicto (sin reimplementar su lógica, la reusa tal
+// cual una vez por cabaña) al caso de VARIAS cabañas seleccionadas a
+// la vez — reservas multi-cabaña (ver toggleCabana/
+// cabanasSeleccionadas). `ocupadasPorCabana` es un mapa cabaña ->
+// array de reservas ya ocupadas de esa cabaña específica (mismo shape
+// que ya devuelve fetchReservasOcupadasPorCabana). Devuelve un único
+// string con un conflicto por cabaña afectada, o '' si ninguna cabaña
+// tiene conflicto.
+export function getConflictoMultiple(entrada, salida, ocupadasPorCabana) {
+  if (!entrada || !salida || !ocupadasPorCabana) return ''
+  const mensajes = []
+  for (const [cabana, ranges] of Object.entries(ocupadasPorCabana)) {
+    const msg = getConflicto(entrada, salida, ranges)
+    if (msg) mensajes.push(`${cabana} — ${msg}`)
+  }
+  return mensajes.join(' | ')
+}
+
 // Busca el período (de periodos_precios, ya cargados) que cubre una
 // fecha de entrada. Fechas ISO son comparables directamente como
 // string (lexicográfico = cronológico). El límite fecha_fin es
@@ -438,9 +637,20 @@ export default function ReservaForm() {
   const [montoBaseDescuento, setMontoBaseDescuento] = useState(null)
   const [montoModificado, setMontoModificado] = useState(false)
   const [originalPagos, setOriginalPagos] = useState(null)
-  const [ocupadas, setOcupadas] = useState([])
+  // Mapa cabaña -> reservas ya ocupadas de esa cabaña (antes `ocupadas`,
+  // un array para UNA sola cabaña — ahora uno por cabaña, porque en
+  // creación puede haber varias seleccionadas a la vez). En edición
+  // sigue siendo, en la práctica, un mapa de una sola clave (form.cabana).
+  const [ocupadasPorCabana, setOcupadasPorCabana] = useState({})
   const [fechaConflicto, setFechaConflicto] = useState('')
   const [minimoNochesError, setMinimoNochesError] = useState('')
+  // Cabañas elegidas al CREAR (multi-select) — no se usa en edición,
+  // que sigue siendo de una sola cabaña (form.cabana) sin cambios. Se
+  // mantiene en sync con form.cabana (joined con "\n") en cada cambio
+  // de selección — ver toggleCabana más abajo — así que el
+  // payload del insert (payload.cabana = form.cabana) no necesita
+  // ningún cambio.
+  const [cabanasSeleccionadas, setCabanasSeleccionadas] = useState([])
   const [grupoForm, setGrupoForm] = useState('')
   const pagoTotalRef = useRef(null)
 
@@ -656,32 +866,62 @@ export default function ReservaForm() {
   // Guard contra respuesta obsoleta — ver comentario en el efecto de
   // auto-cálculo de monto_total más arriba (mismo motivo: complejo
   // default + cambio de cabaña mientras se completa el formulario).
+  // En edición es siempre una sola cabaña (form.cabana); en creación
+  // puede ser varias (cabanasSeleccionadas) — se piden en paralelo y
+  // se arma un mapa cabaña -> ocupadas para que getConflictoMultiple
+  // (que reusa getConflicto sin reimplementarlo) pueda armar un único
+  // mensaje combinado si hay más de una cabaña en conflicto.
   useEffect(() => {
-    if (!form.cabana || !complejoActivo) { setOcupadas([]); setFechaConflicto(''); return }
+    const cabanasAChequear = isEdit ? (form.cabana ? [form.cabana] : []) : cabanasSeleccionadas
+    if (cabanasAChequear.length === 0 || !complejoActivo) {
+      setOcupadasPorCabana({})
+      setFechaConflicto('')
+      return
+    }
     let cancelado = false
-    fetchReservasOcupadasPorCabana(supabase, complejoActivo.id, form.cabana)
-      .then(({ data }) => {
-        if (cancelado) return
-        const ranges = (data || []).filter(r => !isEdit || String(r.id) !== String(id))
-        setOcupadas(ranges)
-        setFechaConflicto(getConflicto(form.fecha_entrada, form.fecha_salida, ranges))
+    Promise.all(
+      cabanasAChequear.map((cabana) =>
+        fetchReservasOcupadasPorCabana(supabase, complejoActivo.id, cabana).then(({ data }) => [cabana, data || []])
+      )
+    ).then((entradas) => {
+      if (cancelado) return
+      const mapa = {}
+      entradas.forEach(([cabana, data]) => {
+        mapa[cabana] = data.filter((r) => !isEdit || String(r.id) !== String(id))
       })
+      setOcupadasPorCabana(mapa)
+      setFechaConflicto(getConflictoMultiple(form.fecha_entrada, form.fecha_salida, mapa))
+    })
     return () => { cancelado = true }
-  }, [form.cabana, isEdit, id, complejoActivo?.id])
+  }, [form.cabana, cabanasSeleccionadas, isEdit, id, complejoActivo?.id])
 
   const handleFechaEntrada = (value) => {
     const noches = calcNoches(value, form.fecha_salida)
     const mes = getMes(value)
     setMontoModificado(false)
     setForm((f) => ({ ...f, fecha_entrada: value, noches, mes }))
-    setFechaConflicto(getConflicto(value, form.fecha_salida, ocupadas))
+    setFechaConflicto(getConflictoMultiple(value, form.fecha_salida, ocupadasPorCabana))
   }
 
   const handleFechaSalida = (value) => {
     const noches = calcNoches(form.fecha_entrada, value)
     setMontoModificado(false)
     setForm((f) => ({ ...f, fecha_salida: value, noches }))
-    setFechaConflicto(getConflicto(form.fecha_entrada, value, ocupadas))
+    setFechaConflicto(getConflictoMultiple(form.fecha_entrada, value, ocupadasPorCabana))
+  }
+
+  // Multi-select de cabañas al crear (CabinMultiPicker) — togglea una
+  // cabaña agregándola al final o sacándola, y mantiene form.cabana en
+  // sync (joined con "\n", en el orden en que se fueron tildando) —
+  // así el payload del insert no necesita ningún cambio: con una sola
+  // cabaña, form.cabana queda IDÉNTICO a hoy (join de un array de 1
+  // elemento no agrega separador).
+  const toggleCabana = (cabana) => {
+    setCabanasSeleccionadas((prev) => {
+      const seleccion = prev.includes(cabana) ? prev.filter((c) => c !== cabana) : [...prev, cabana]
+      set('cabana', seleccion.join('\n'))
+      return seleccion
+    })
   }
 
   const saldo =
@@ -703,6 +943,11 @@ export default function ReservaForm() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
+
+    if (!isEdit && cabanasSeleccionadas.length === 0) {
+      setError('Seleccioná al menos una cabaña.')
+      return
+    }
 
     if (form.fecha_entrada && form.fecha_salida && form.fecha_salida <= form.fecha_entrada) {
       setError('La fecha de salida debe ser posterior a la de entrada.')
@@ -779,21 +1024,47 @@ export default function ReservaForm() {
       }
     }
 
-    if (form.cabana && form.fecha_entrada && form.fecha_salida) {
-      let q = supabase
-        .from('reservas')
-        .select('nombre_apellido, fecha_entrada, fecha_salida')
-        .eq('cabana', form.cabana)
-        .eq('complejo_id', complejoActivo.id)
-        .neq('estado', 'Cancelada')
-        .lt('fecha_entrada', form.fecha_salida)
-        .gt('fecha_salida', form.fecha_entrada)
-      if (isEdit) q = q.neq('id', id)
-      const { data: overlaps } = await q
-      if (overlaps && overlaps.length > 0) {
-        const o = overlaps[0]
+    // Re-chequeo final de superposición, directo contra la base (no
+    // confía en el estado `fechaConflicto` de arriba, que puede haber
+    // quedado desactualizado) — ahora por CADA cabaña seleccionada, en
+    // paralelo. Es all-or-nothing: si cualquier cabaña tiene conflicto,
+    // se corta ACÁ, antes de crear nada — ninguna reserva se inserta
+    // para ninguna cabaña, ni siquiera para las que sí estaban libres.
+    const cabanasAChequear = isEdit ? (form.cabana ? [form.cabana] : []) : cabanasSeleccionadas
+    if (cabanasAChequear.length > 0 && form.fecha_entrada && form.fecha_salida) {
+      const resultados = await Promise.all(
+        cabanasAChequear.map(async (cabana) => {
+          let q = supabase
+            .from('reservas')
+            .select('nombre_apellido, fecha_entrada, fecha_salida')
+            .eq('cabana', cabana)
+            .eq('complejo_id', complejoActivo.id)
+            .neq('estado', 'Cancelada')
+            .lt('fecha_entrada', form.fecha_salida)
+            .gt('fecha_salida', form.fecha_entrada)
+          if (isEdit) q = q.neq('id', id)
+          const { data } = await q
+          return { cabana, overlaps: data || [] }
+        })
+      )
+      const conConflicto = resultados.filter((r) => r.overlaps.length > 0)
+      if (conConflicto.length > 0) {
         const fmt = (d) => new Date(d + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
-        setError(`La cabaña ${form.cabana} ya tiene una reserva del ${fmt(o.fecha_entrada)} al ${fmt(o.fecha_salida)} (${o.nombre_apellido}). Elegí otras fechas o una cabaña diferente.`)
+        if (conConflicto.length === 1 && cabanasAChequear.length === 1) {
+          // Una sola cabaña elegida (el caso de hoy) — mismo mensaje
+          // EXACTO que antes, nada cambia acá.
+          const { cabana, overlaps } = conConflicto[0]
+          const o = overlaps[0]
+          setError(`La cabaña ${cabana} ya tiene una reserva del ${fmt(o.fecha_entrada)} al ${fmt(o.fecha_salida)} (${o.nombre_apellido}). Elegí otras fechas o una cabaña diferente.`)
+          return
+        }
+        const detalle = conConflicto
+          .map(({ cabana, overlaps }) => {
+            const o = overlaps[0]
+            return `${cabana} (${fmt(o.fecha_entrada)} al ${fmt(o.fecha_salida)}, ${o.nombre_apellido})`
+          })
+          .join('; ')
+        setError(`Ya hay reservas que se superponen en: ${detalle}. Elegí otras fechas o cabañas diferentes.`)
         return
       }
     }
@@ -1122,65 +1393,92 @@ export default function ReservaForm() {
                 className={inputClass}
               />
             </Field>
-            {cabanasPorGrupo.length > 1 ? (
-              <>
-                <Field label="Bloque" required>
-                  <select
-                    data-testid="select-bloque"
-                    value={grupoForm}
-                    onChange={(e) => { setGrupoForm(e.target.value); set('cabana', '') }}
-                    required
-                    className={inputClass}
-                  >
-                    <option value="">Seleccionar bloque</option>
-                    {cabanasPorGrupo.map((s) => (
-                      <option key={s.grupo || 'sin-grupo'} value={s.grupo || ''}>{s.grupo || 'General'}</option>
-                    ))}
-                  </select>
-                </Field>
+            {isEdit ? (
+              // Edición: sin cambios — una sola cabaña, fuera del
+              // alcance de este cambio (multi-select es sólo para
+              // crear, ver la rama !isEdit más abajo).
+              cabanasPorGrupo.length > 1 ? (
+                <>
+                  <Field label="Bloque" required>
+                    <select
+                      data-testid="select-bloque"
+                      value={grupoForm}
+                      onChange={(e) => { setGrupoForm(e.target.value); set('cabana', '') }}
+                      required
+                      className={inputClass}
+                    >
+                      <option value="">Seleccionar bloque</option>
+                      {cabanasPorGrupo.map((s) => (
+                        <option key={s.grupo || 'sin-grupo'} value={s.grupo || ''}>{s.grupo || 'General'}</option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="Cabaña" required>
+                    <select
+                      data-testid="select-cabana"
+                      value={form.cabana}
+                      onChange={(e) => set('cabana', e.target.value)}
+                      required
+                      disabled={!grupoForm}
+                      className={inputClass}
+                    >
+                      <option value="">{grupoForm ? 'Seleccionar cabaña' : 'Elegí primero un bloque'}</option>
+                      {(cabanasPorGrupo.find((s) => (s.grupo || '') === grupoForm)?.cabanas || []).map((c) => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                  </Field>
+                </>
+              ) : (
                 <Field label="Cabaña" required>
                   <select
                     data-testid="select-cabana"
                     value={form.cabana}
                     onChange={(e) => set('cabana', e.target.value)}
                     required
-                    disabled={!grupoForm}
                     className={inputClass}
                   >
-                    <option value="">{grupoForm ? 'Seleccionar cabaña' : 'Elegí primero un bloque'}</option>
-                    {(cabanasPorGrupo.find((s) => (s.grupo || '') === grupoForm)?.cabanas || []).map((c) => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
+                    <option value="">Seleccionar cabaña</option>
+                    {CABANAS.map((c) => <option key={c} value={c}>{c}</option>)}
                   </select>
                 </Field>
-              </>
+              )
             ) : (
-              <Field label="Cabaña" required>
-                <select
-                  data-testid="select-cabana"
-                  value={form.cabana}
-                  onChange={(e) => set('cabana', e.target.value)}
-                  required
-                  className={inputClass}
-                >
-                  <option value="">Seleccionar cabaña</option>
-                  {CABANAS.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
+              // Creación: multi-select (una o más cabañas), vía el
+              // control custom CabinMultiPicker — mismo agrupamiento por
+              // bloque que en edición (cabanasPorGrupo), ahora como
+              // headers dentro del panel en vez de un dropdown "Bloque"
+              // de dos pasos, porque ahora se puede elegir más de una
+              // cabaña (incluso de bloques distintos). La única lógica
+              // acá es toggleCabana (arriba) — el componente en sí no
+              // sabe nada de form.cabana/conflictos/validación.
+              <Field label="Cabaña(s)" required>
+                <CabinMultiPicker
+                  cabanasPorGrupo={cabanasPorGrupo}
+                  seleccionadas={cabanasSeleccionadas}
+                  onToggle={toggleCabana}
+                />
               </Field>
             )}
-            {form.cabana && ocupadas.length > 0 && (
+            {Object.entries(ocupadasPorCabana).some(([, ranges]) => ranges.length > 0) && (
               <div className="sm:col-span-2 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">
-                <p className="text-xs font-semibold text-orange-700 mb-1.5">Fechas ya reservadas en {form.cabana}:</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {ocupadas.map((o, i) => {
-                    const fmt = (d) => new Date(d + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })
-                    return (
-                      <span key={i} className="text-xs bg-orange-100 text-orange-800 rounded px-2 py-0.5">
-                        {fmt(o.fecha_entrada)} – {fmt(o.fecha_salida)} · {o.nombre_apellido.split(',')[0].split(' ')[0]}
-                      </span>
-                    )
-                  })}
-                </div>
+                {Object.entries(ocupadasPorCabana)
+                  .filter(([, ranges]) => ranges.length > 0)
+                  .map(([cabana, ranges]) => (
+                    <div key={cabana} className="mb-1.5 last:mb-0">
+                      <p className="text-xs font-semibold text-orange-700 mb-1.5">Fechas ya reservadas en {cabana}:</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {ranges.map((o, i) => {
+                          const fmt = (d) => new Date(d + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })
+                          return (
+                            <span key={i} className="text-xs bg-orange-100 text-orange-800 rounded px-2 py-0.5">
+                              {fmt(o.fecha_entrada)} – {fmt(o.fecha_salida)} · {o.nombre_apellido.split(',')[0].split(' ')[0]}
+                            </span>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ))}
               </div>
             )}
             <Field label="PAX (personas)">

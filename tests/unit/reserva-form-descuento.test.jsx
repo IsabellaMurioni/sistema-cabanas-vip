@@ -114,10 +114,14 @@ describe('ReservaForm.jsx — descuento en MONTO FIJO con precio manual/"Precio 
   })
 
   async function completarDatosBase(user) {
-    await waitFor(() => expect(screen.getByTestId('select-cabana')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByTestId('cabana-picker-trigger')).toBeInTheDocument())
     await user.type(screen.getByTestId('input-nombre-apellido'), 'Huésped Descuento')
     await user.type(screen.getByTestId('input-email'), 'descuento@example.com')
-    await user.selectOptions(screen.getByTestId('select-cabana'), 'Cabaña 1')
+    // Selector de cabaña(s) custom (CabinMultiPicker) — ver
+    // reserva-form-multi-cabana.test.jsx para la cobertura dedicada.
+    await user.click(screen.getByTestId('cabana-picker-trigger'))
+    await user.click(screen.getByTestId('cabana-picker-row-Cabaña 1'))
+    await user.click(screen.getByTestId('cabana-picker-listo'))
     await user.type(screen.getByTestId('input-fecha-entrada'), '2026-06-01')
     await user.type(screen.getByTestId('input-fecha-salida'), '2026-06-03')
     await user.clear(screen.getByTestId('input-monto-total'))

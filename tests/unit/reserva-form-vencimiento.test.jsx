@@ -90,11 +90,17 @@ function makeSupabaseMock({ reservaExistente } = {}) {
 }
 
 async function completarYEnviarFormulario(user) {
-  await waitFor(() => expect(screen.getByTestId('select-cabana')).toBeInTheDocument())
+  await waitFor(() => expect(screen.getByTestId('cabana-picker-trigger')).toBeInTheDocument())
 
   await user.type(screen.getByTestId('input-nombre-apellido'), 'Huésped de Prueba')
   await user.type(screen.getByTestId('input-email'), 'huesped@example.com')
-  await user.selectOptions(screen.getByTestId('select-cabana'), 'Cabaña 1')
+  // Selector de cabaña(s) custom (CabinMultiPicker, no un <select>
+  // nativo): abrir el trigger, tildar la fila, cerrar con "Listo" — ver
+  // reserva-form-multi-cabana.test.jsx para la cobertura dedicada a este
+  // control.
+  await user.click(screen.getByTestId('cabana-picker-trigger'))
+  await user.click(screen.getByTestId('cabana-picker-row-Cabaña 1'))
+  await user.click(screen.getByTestId('cabana-picker-listo'))
   await user.type(screen.getByTestId('input-fecha-entrada'), '2026-06-01')
   await user.type(screen.getByTestId('input-fecha-salida'), '2026-06-03')
   await user.clear(screen.getByTestId('input-monto-total'))
@@ -160,11 +166,13 @@ describe('ReservaForm.jsx — fecha_vencimiento al crear, independiente del emai
     const user = userEvent.setup()
 
     render(<MemoryRouter><ReservaForm /></MemoryRouter>)
-    await waitFor(() => expect(screen.getByTestId('select-cabana')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByTestId('cabana-picker-trigger')).toBeInTheDocument())
 
     await user.type(screen.getByTestId('input-nombre-apellido'), 'Huésped Gratis')
     await user.type(screen.getByTestId('input-email'), 'gratis@example.com')
-    await user.selectOptions(screen.getByTestId('select-cabana'), 'Cabaña 1')
+    await user.click(screen.getByTestId('cabana-picker-trigger'))
+    await user.click(screen.getByTestId('cabana-picker-row-Cabaña 1'))
+    await user.click(screen.getByTestId('cabana-picker-listo'))
     await user.type(screen.getByTestId('input-fecha-entrada'), '2026-06-01')
     await user.type(screen.getByTestId('input-fecha-salida'), '2026-06-03')
     await user.clear(screen.getByTestId('input-monto-total'))
