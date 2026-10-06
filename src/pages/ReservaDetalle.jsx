@@ -182,11 +182,11 @@ export default function ReservaDetalle() {
               <p className="font-bold text-[#111111]">{money(reserva.monto_total)}</p>
               {descuentoMonto > 0 && (
                 <>
-                  <div className="flex items-baseline justify-center gap-1.5 mt-0.5">
-                    <span style={{ fontSize: 12.5, color: '#A7AEBB', textDecoration: 'line-through' }}>
+                  <div className="flex items-baseline justify-center gap-1.5 mt-0.5" style={{ flexWrap: 'nowrap' }}>
+                    <span style={{ fontSize: 12.5, color: '#A7AEBB', textDecoration: 'line-through', whiteSpace: 'nowrap' }}>
                       {money(montoOriginal)}
                     </span>
-                    <span style={{ fontSize: 12.5, fontWeight: 700, color: '#15803D' }}>
+                    <span style={{ fontSize: 12.5, fontWeight: 700, color: '#15803D', whiteSpace: 'nowrap' }}>
                       −{money(descuentoMonto)}
                     </span>
                   </div>
