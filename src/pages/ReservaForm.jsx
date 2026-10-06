@@ -693,9 +693,13 @@ export default function ReservaForm() {
           pago_cabana_comprobante: data.pago_cabana_comprobante ?? '',
           estado: data.estado ?? 'Pendiente',
           observaciones: data.observaciones ?? '',
-          descuento_aplicar:    false,
-          descuento_monto:      '',
-          descuento_motivo:     '',
+          // Si la reserva YA tenía un descuento guardado, precarga el
+          // checkbox/monto/motivo tal cual — ver montoBaseDescuento más
+          // abajo para la otra mitad de este fix (la base sobre la que
+          // se resta).
+          descuento_aplicar:    Boolean(data.descuento_monto),
+          descuento_monto:      data.descuento_monto != null ? String(data.descuento_monto) : '',
+          descuento_motivo:     data.descuento_motivo ?? '',
         })
         // Precarga el picker con las cabañas ya guardadas (una o varias,
         // separadas por "\n" — mismo formato que arma toggleCabana al
@@ -704,7 +708,29 @@ export default function ReservaForm() {
         // pertenezcan — ver cabanasAChequear más abajo, que ahora usa
         // cabanasSeleccionadas en ambos modos.
         setCabanasSeleccionadas((data.cabana ?? '').split('\n').filter(Boolean))
-        setMontoBaseDescuento(null)
+        // Bug real reportado: editar una reserva que YA tenía un
+        // descuento aplicado y cambiarlo calculaba el nuevo descuento
+        // sobre el total YA descontado (monto_total, que se guarda
+        // post-descuento — ver el comentario de montoOriginal en
+        // ReservaDetalle.jsx, mismo criterio acá) en vez de sobre el
+        // monto original — "descuento sobre descuento". Pasaba porque
+        // montoBaseDescuento arrancaba en null en edición, y recién se
+        // capturaba cuando el usuario TILDABA el checkbox a mano (ver
+        // su onChange, más abajo) — pero si la reserva ya tenía
+        // descuento, el checkbox arranca tildado de una (arriba), así
+        // que ese onChange nunca se dispara, y sin este fix
+        // montoBaseDescuento se hubiera quedado en null (el desglose ni
+        // aparecía) o, si algo más lo disparaba, hubiera capturado
+        // monto_total (el ya descontado) como base. Fix: reconstruir acá
+        // mismo la base original — monto_total + descuento_monto, igual
+        // fórmula que ya usa ReservaDetalle.jsx para mostrar el "antes"
+        // tachado — cuando hay descuento guardado; si no, se mantiene en
+        // null como siempre (se captura recién al tildar el checkbox).
+        setMontoBaseDescuento(
+          data.descuento_monto
+            ? Number(data.monto_total || 0) + Number(data.descuento_monto || 0)
+            : null
+        )
         setOriginalPagos({
           sena1_monto:      data.sena1_monto,
           sena1_tipo:       data.sena1_tipo ?? 'Banco',
