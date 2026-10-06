@@ -1563,11 +1563,35 @@ export default function ReservaForm() {
                     const activar = e.target.checked
                     if (activar) {
                       // Captura el precio actual como base del descuento
-                      // en el momento de tildar el checkbox — automático
-                      // (precioBaseNeto) si ya se resolvió por período,
-                      // si no el monto cargado en ese momento (a mano, o
-                      // el de una reserva existente en edición).
-                      setMontoBaseDescuento(precioBaseNeto ?? Number(form.monto_total || 0))
+                      // en el momento de tildar el checkbox. Bug real
+                      // reportado: si Lorena ya había tipeado un monto
+                      // manual distinto al sugerido (ej. sugerido $10,
+                      // tipeado $8) y recién DESPUÉS tildaba "Aplicar
+                      // descuento", acá se ignoraba lo tipeado y se
+                      // capturaba precioBaseNeto ($10, el valor
+                      // calculado por período) como base — porque
+                      // precioBaseNeto nunca se invalida/limpia cuando
+                      // el usuario edita monto_total a mano, sigue
+                      // viviendo con el valor viejo. El efecto de abajo
+                      // (resta el descuento a montoBaseDescuento) corría
+                      // inmediatamente después y pisaba el campo con esa
+                      // base equivocada, incluso sin haber tipeado
+                      // todavía ningún monto de descuento. Fix: si el
+                      // usuario ya modificó el total a mano
+                      // (montoModificado — ver su declaración más
+                      // arriba, y los puntos donde se resetea a false:
+                      // cambiar fecha de entrada/salida/pax, que sí
+                      // deben volver a confiar en el precio sugerido),
+                      // ese valor tipeado manda siempre, sin importar si
+                      // precioBaseNeto ya se resolvió o no. Sin
+                      // modificación manual, sigue el criterio de
+                      // siempre: automático (precioBaseNeto) si ya se
+                      // resolvió por período, si no el monto cargado en
+                      // ese momento (a mano, o el de una reserva
+                      // existente en edición).
+                      setMontoBaseDescuento(
+                        montoModificado ? Number(form.monto_total || 0) : (precioBaseNeto ?? Number(form.monto_total || 0))
+                      )
                     } else if (montoBaseDescuento !== null) {
                       set('monto_total', String(montoBaseDescuento))
                     }
