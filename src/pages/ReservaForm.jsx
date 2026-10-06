@@ -613,7 +613,7 @@ function resolverPrecioReservaClasico(periodos, getPrecio, periodoEntrada, fecha
 export default function ReservaForm() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { complejoActivo, cabanasNombres: CABANAS, cabanasPorGrupo } = useComplejo()
+  const { complejoActivo, cabanasPorGrupo } = useComplejo()
   const isEdit = Boolean(id)
 
   const [form, setForm] = useState(EMPTY_FORM)
@@ -638,20 +638,18 @@ export default function ReservaForm() {
   const [montoModificado, setMontoModificado] = useState(false)
   const [originalPagos, setOriginalPagos] = useState(null)
   // Mapa cabaña -> reservas ya ocupadas de esa cabaña (antes `ocupadas`,
-  // un array para UNA sola cabaña — ahora uno por cabaña, porque en
-  // creación puede haber varias seleccionadas a la vez). En edición
-  // sigue siendo, en la práctica, un mapa de una sola clave (form.cabana).
+  // un array para UNA sola cabaña — ahora uno por cabaña, porque puede
+  // haber varias seleccionadas a la vez, en creación o en edición).
   const [ocupadasPorCabana, setOcupadasPorCabana] = useState({})
   const [fechaConflicto, setFechaConflicto] = useState('')
   const [minimoNochesError, setMinimoNochesError] = useState('')
-  // Cabañas elegidas al CREAR (multi-select) — no se usa en edición,
-  // que sigue siendo de una sola cabaña (form.cabana) sin cambios. Se
-  // mantiene en sync con form.cabana (joined con "\n") en cada cambio
-  // de selección — ver toggleCabana más abajo — así que el
-  // payload del insert (payload.cabana = form.cabana) no necesita
-  // ningún cambio.
+  // Cabañas elegidas en el CabinMultiPicker — en creación arranca vacío;
+  // en edición arranca precargado con las cabañas ya guardadas (ver el
+  // efecto de carga más abajo). Se mantiene en sync con form.cabana
+  // (joined con "\n") en cada cambio de selección — ver toggleCabana
+  // más abajo — así que el payload del insert/update
+  // (payload.cabana = form.cabana) no necesita ningún cambio.
   const [cabanasSeleccionadas, setCabanasSeleccionadas] = useState([])
-  const [grupoForm, setGrupoForm] = useState('')
   const pagoTotalRef = useRef(null)
 
   const set = (field, value) => {
@@ -699,6 +697,13 @@ export default function ReservaForm() {
           descuento_monto:      '',
           descuento_motivo:     '',
         })
+        // Precarga el picker con las cabañas ya guardadas (una o varias,
+        // separadas por "\n" — mismo formato que arma toggleCabana al
+        // crear) para que editar una reserva multi-cabaña las muestre
+        // todas tildadas, sin importar a cuántos bloques distintos
+        // pertenezcan — ver cabanasAChequear más abajo, que ahora usa
+        // cabanasSeleccionadas en ambos modos.
+        setCabanasSeleccionadas((data.cabana ?? '').split('\n').filter(Boolean))
         setMontoBaseDescuento(null)
         setOriginalPagos({
           sena1_monto:      data.sena1_monto,
@@ -728,12 +733,6 @@ export default function ReservaForm() {
     })
     return () => { cancelado = true }
   }, [isEdit, complejoActivo?.id])
-
-  useEffect(() => {
-    if (!form.cabana) return
-    const seccion = cabanasPorGrupo.find((s) => s.cabanas.includes(form.cabana))
-    if (seccion?.grupo) setGrupoForm(seccion.grupo)
-  }, [form.cabana, cabanasPorGrupo])
 
   // Auto-calcular monto_total al crear (no al editar)
   //
@@ -866,21 +865,26 @@ export default function ReservaForm() {
   // Guard contra respuesta obsoleta — ver comentario en el efecto de
   // auto-cálculo de monto_total más arriba (mismo motivo: complejo
   // default + cambio de cabaña mientras se completa el formulario).
-  // En edición es siempre una sola cabaña (form.cabana); en creación
-  // puede ser varias (cabanasSeleccionadas) — se piden en paralelo y
-  // se arma un mapa cabaña -> ocupadas para que getConflictoMultiple
-  // (que reusa getConflicto sin reimplementarlo) pueda armar un único
-  // mensaje combinado si hay más de una cabaña en conflicto.
+  // Mismo picker (CabinMultiPicker) y misma fuente (cabanasSeleccionadas)
+  // en creación Y edición — en edición arranca precargado con las
+  // cabañas ya guardadas (ver el efecto de carga más arriba). Se piden
+  // en paralelo y se arma un mapa cabaña -> ocupadas para que
+  // getConflictoMultiple (que reusa getConflicto sin reimplementarlo)
+  // pueda armar un único mensaje combinado si hay más de una cabaña en
+  // conflicto. El filter de abajo excluye la propia reserva que se está
+  // editando de su propio chequeo de superposición (si no, cualquier
+  // edición sin cambiar fechas/cabañas se marcaría en falso conflicto
+  // consigo misma) — mismo criterio que ya usaba esta misma línea antes
+  // de unificar creación/edición, ahora aplicado por cabaña.
   useEffect(() => {
-    const cabanasAChequear = isEdit ? (form.cabana ? [form.cabana] : []) : cabanasSeleccionadas
-    if (cabanasAChequear.length === 0 || !complejoActivo) {
+    if (cabanasSeleccionadas.length === 0 || !complejoActivo) {
       setOcupadasPorCabana({})
       setFechaConflicto('')
       return
     }
     let cancelado = false
     Promise.all(
-      cabanasAChequear.map((cabana) =>
+      cabanasSeleccionadas.map((cabana) =>
         fetchReservasOcupadasPorCabana(supabase, complejoActivo.id, cabana).then(({ data }) => [cabana, data || []])
       )
     ).then((entradas) => {
@@ -893,7 +897,7 @@ export default function ReservaForm() {
       setFechaConflicto(getConflictoMultiple(form.fecha_entrada, form.fecha_salida, mapa))
     })
     return () => { cancelado = true }
-  }, [form.cabana, cabanasSeleccionadas, isEdit, id, complejoActivo?.id])
+  }, [cabanasSeleccionadas, isEdit, id, complejoActivo?.id])
 
   const handleFechaEntrada = (value) => {
     const noches = calcNoches(value, form.fecha_salida)
@@ -910,12 +914,12 @@ export default function ReservaForm() {
     setFechaConflicto(getConflictoMultiple(form.fecha_entrada, value, ocupadasPorCabana))
   }
 
-  // Multi-select de cabañas al crear (CabinMultiPicker) — togglea una
-  // cabaña agregándola al final o sacándola, y mantiene form.cabana en
-  // sync (joined con "\n", en el orden en que se fueron tildando) —
-  // así el payload del insert no necesita ningún cambio: con una sola
-  // cabaña, form.cabana queda IDÉNTICO a hoy (join de un array de 1
-  // elemento no agrega separador).
+  // Multi-select de cabañas (CabinMultiPicker), en creación Y edición —
+  // togglea una cabaña agregándola al final o sacándola, y mantiene
+  // form.cabana en sync (joined con "\n", en el orden en que se fueron
+  // tildando) — así el payload del insert/update no necesita ningún
+  // cambio: con una sola cabaña, form.cabana queda IDÉNTICO a hoy (join
+  // de un array de 1 elemento no agrega separador).
   const toggleCabana = (cabana) => {
     setCabanasSeleccionadas((prev) => {
       const seleccion = prev.includes(cabana) ? prev.filter((c) => c !== cabana) : [...prev, cabana]
@@ -944,7 +948,7 @@ export default function ReservaForm() {
     e.preventDefault()
     setError('')
 
-    if (!isEdit && cabanasSeleccionadas.length === 0) {
+    if (cabanasSeleccionadas.length === 0) {
       setError('Seleccioná al menos una cabaña.')
       return
     }
@@ -1028,9 +1032,12 @@ export default function ReservaForm() {
     // confía en el estado `fechaConflicto` de arriba, que puede haber
     // quedado desactualizado) — ahora por CADA cabaña seleccionada, en
     // paralelo. Es all-or-nothing: si cualquier cabaña tiene conflicto,
-    // se corta ACÁ, antes de crear nada — ninguna reserva se inserta
-    // para ninguna cabaña, ni siquiera para las que sí estaban libres.
-    const cabanasAChequear = isEdit ? (form.cabana ? [form.cabana] : []) : cabanasSeleccionadas
+    // se corta ACÁ, antes de crear/guardar nada — ninguna reserva se
+    // inserta/actualiza para ninguna cabaña, ni siquiera para las que sí
+    // estaban libres. `.neq('id', id)` (unas líneas más abajo) excluye
+    // la propia reserva en edición de su propio chequeo, igual que en el
+    // efecto de arriba.
+    const cabanasAChequear = cabanasSeleccionadas
     if (cabanasAChequear.length > 0 && form.fecha_entrada && form.fecha_salida) {
       const resultados = await Promise.all(
         cabanasAChequear.map(async (cabana) => {
@@ -1393,73 +1400,30 @@ export default function ReservaForm() {
                 className={inputClass}
               />
             </Field>
-            {isEdit ? (
-              // Edición: sin cambios — una sola cabaña, fuera del
-              // alcance de este cambio (multi-select es sólo para
-              // crear, ver la rama !isEdit más abajo).
-              cabanasPorGrupo.length > 1 ? (
-                <>
-                  <Field label="Bloque" required>
-                    <select
-                      data-testid="select-bloque"
-                      value={grupoForm}
-                      onChange={(e) => { setGrupoForm(e.target.value); set('cabana', '') }}
-                      required
-                      className={inputClass}
-                    >
-                      <option value="">Seleccionar bloque</option>
-                      {cabanasPorGrupo.map((s) => (
-                        <option key={s.grupo || 'sin-grupo'} value={s.grupo || ''}>{s.grupo || 'General'}</option>
-                      ))}
-                    </select>
-                  </Field>
-                  <Field label="Cabaña" required>
-                    <select
-                      data-testid="select-cabana"
-                      value={form.cabana}
-                      onChange={(e) => set('cabana', e.target.value)}
-                      required
-                      disabled={!grupoForm}
-                      className={inputClass}
-                    >
-                      <option value="">{grupoForm ? 'Seleccionar cabaña' : 'Elegí primero un bloque'}</option>
-                      {(cabanasPorGrupo.find((s) => (s.grupo || '') === grupoForm)?.cabanas || []).map((c) => (
-                        <option key={c} value={c}>{c}</option>
-                      ))}
-                    </select>
-                  </Field>
-                </>
-              ) : (
-                <Field label="Cabaña" required>
-                  <select
-                    data-testid="select-cabana"
-                    value={form.cabana}
-                    onChange={(e) => set('cabana', e.target.value)}
-                    required
-                    className={inputClass}
-                  >
-                    <option value="">Seleccionar cabaña</option>
-                    {CABANAS.map((c) => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                </Field>
-              )
-            ) : (
-              // Creación: multi-select (una o más cabañas), vía el
-              // control custom CabinMultiPicker — mismo agrupamiento por
-              // bloque que en edición (cabanasPorGrupo), ahora como
-              // headers dentro del panel en vez de un dropdown "Bloque"
-              // de dos pasos, porque ahora se puede elegir más de una
-              // cabaña (incluso de bloques distintos). La única lógica
-              // acá es toggleCabana (arriba) — el componente en sí no
-              // sabe nada de form.cabana/conflictos/validación.
-              <Field label="Cabaña(s)" required>
-                <CabinMultiPicker
-                  cabanasPorGrupo={cabanasPorGrupo}
-                  seleccionadas={cabanasSeleccionadas}
-                  onToggle={toggleCabana}
-                />
-              </Field>
-            )}
+            {/* Mismo CabinMultiPicker en creación Y edición — antes,
+                edición usaba un dropdown BLOQUE → CABAÑA de una sola
+                cabaña que no entendía reservas multi-cabaña (cabana con
+                varios nombres separados por "\n"): abrir una de esas
+                para editar no mostraba ninguna cabaña seleccionada, con
+                riesgo real de pisar/perder las cabañas de la reserva si
+                se guardaba así sin darse cuenta. En edición, el picker
+                arranca precargado con las cabañas ya guardadas (ver el
+                efecto de carga más arriba) — un nombre que ya no exista
+                en cabanasPorGrupo (cabaña renombrada/eliminada desde que
+                se creó la reserva) sigue apareciendo como chip en el
+                trigger (CabinMultiPicker lista los chips directo desde
+                `seleccionadas`, no desde cabanasPorGrupo) pero no como
+                fila tildable dentro del panel — no revienta, sólo no se
+                puede destildar desde acá. La única lógica acá es
+                toggleCabana (arriba) — el componente en sí no sabe nada
+                de form.cabana/conflictos/validación. */}
+            <Field label="Cabaña(s)" required>
+              <CabinMultiPicker
+                cabanasPorGrupo={cabanasPorGrupo}
+                seleccionadas={cabanasSeleccionadas}
+                onToggle={toggleCabana}
+              />
+            </Field>
             {Object.entries(ocupadasPorCabana).some(([, ranges]) => ranges.length > 0) && (
               <div className="sm:col-span-2 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">
                 {Object.entries(ocupadasPorCabana)
