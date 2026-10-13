@@ -1,7 +1,7 @@
 ﻿import { useEffect, useMemo, useRef, useState, Fragment } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { useComplejo } from '../context/ComplejoContext'
+import { useComplejo, cabinMatchesName } from '../context/ComplejoContext'
 import {
   addDays, addMonths, subMonths, differenceInDays,
   startOfMonth, getDaysInMonth, getDay,
@@ -274,8 +274,19 @@ function todayStr() {
 // verdad para esta relación reserva↔cabaña en todo este archivo — cada
 // lugar que antes hacía `r.cabana === cabana`/`r.cabana !== cabana`
 // pasa a usar esta función en vez de reimplementar el split.
-export function reservaIncluyeCabana(reserva, cabana) {
-  return (reserva?.cabana || '').split('\n').includes(cabana)
+//
+// `cabanasActivo` (opcional, tercer parámetro) suma los nombres
+// ANTERIORES de la cabaña (ver cabinMatchesName en ComplejoContext.jsx
+// — mismo motivo: una reserva creada antes de un rename sigue
+// guardando el nombre viejo para siempre, y eso no se reescribe nunca
+// en `reservas`). Sin este parámetro (o con una lista vacía), el
+// comportamiento es IDÉNTICO a antes — sólo matchea el nombre actual —
+// así que no rompe ningún caller/test existente que no lo pase.
+export function reservaIncluyeCabana(reserva, cabana, cabanasActivo) {
+  const nombres = (reserva?.cabana || '').split('\n')
+  const cabanaRow = cabanasActivo?.find((c) => c.nombre === cabana)
+  if (!cabanaRow) return nombres.includes(cabana)
+  return nombres.some((n) => cabinMatchesName(cabanaRow, n))
 }
 
 // ── CalendarPicker ──────────────────────────────────────────
@@ -504,7 +515,7 @@ export function MonthBoundaryLines({ startDate, numDays }) {
 
 // ── TimelineRow ─────────────────────────────────────────────
 function TimelineRow({ cabana, reservas, startDate, endDate, height = 40, onReservaClick }) {
-  const { getCabanaColor } = useComplejo()
+  const { getCabanaColor, cabanasActivo } = useComplejo()
   const today = startOfToday()
   const numDays = differenceInDays(endDate, startDate) + 1
   const todayOffset = differenceInDays(today, startDate)
@@ -512,7 +523,7 @@ function TimelineRow({ cabana, reservas, startDate, endDate, height = 40, onRese
   const [tooltip, setTooltip] = useState(null)
 
   const relevantReservas = reservas.filter((r) => {
-    if (!reservaIncluyeCabana(r, cabana)) return false
+    if (!reservaIncluyeCabana(r, cabana, cabanasActivo)) return false
     const ent = parseISO(r.fecha_entrada)
     const sal = parseISO(r.fecha_salida)
     return sal >= startDate && ent <= endDate
@@ -751,7 +762,7 @@ export function ReservaPopup({ reserva, onClose, onView }) {
 // ── Main component ──────────────────────────────────────────
 export default function Disponibilidad() {
   const navigate = useNavigate()
-  const { cabanasNombres: CABANAS, getCabanaColor, cabanasPorGrupo, complejoActivo } = useComplejo()
+  const { cabanasNombres: CABANAS, getCabanaColor, cabanasPorGrupo, complejoActivo, cabanasActivo } = useComplejo()
   const today = startOfToday()
 
   const [startDate, setStartDate] = useState(today)
@@ -805,15 +816,15 @@ export default function Disponibilidad() {
     const map = {}
     CABANAS.forEach((cab) => {
       const current = reservas.find(
-        (r) => reservaIncluyeCabana(r, cab) && r.fecha_entrada <= tStr && tStr <= r.fecha_salida
+        (r) => reservaIncluyeCabana(r, cab, cabanasActivo) && r.fecha_entrada <= tStr && tStr <= r.fecha_salida
       )
       const upcoming = reservas
-        .filter((r) => reservaIncluyeCabana(r, cab) && r.fecha_entrada > tStr)
+        .filter((r) => reservaIncluyeCabana(r, cab, cabanasActivo) && r.fecha_entrada > tStr)
         .sort((a, b) => a.fecha_entrada.localeCompare(b.fecha_entrada))[0]
       map[cab] = { current, upcoming, occupied: Boolean(current) }
     })
     return map
-  }, [reservas])
+  }, [reservas, cabanasActivo])
 
   const handleStartDate = (d) => {
     setStartDate(d)
@@ -1075,7 +1086,7 @@ export default function Disponibilidad() {
             <div className="space-y-2">
               <p className="section-label">Reservas — {selectedCabana}</p>
               {reservas
-                .filter(r => reservaIncluyeCabana(r, selectedCabana))
+                .filter(r => reservaIncluyeCabana(r, selectedCabana, cabanasActivo))
                 .sort((a, b) => a.fecha_entrada.localeCompare(b.fecha_entrada))
                 .map(r => (
                   <div key={r.id} className="bg-white border border-[#f0e6d8] rounded-[12px] px-4 py-3 cursor-pointer hover:border-[var(--color-primario)] transition-colors"
@@ -1088,7 +1099,7 @@ export default function Disponibilidad() {
                     <p className="text-xs text-[#888] mt-0.5">{r.fecha_entrada} → {r.fecha_salida}</p>
                   </div>
                 ))}
-              {reservas.filter(r => reservaIncluyeCabana(r, selectedCabana)).length === 0 && (
+              {reservas.filter(r => reservaIncluyeCabana(r, selectedCabana, cabanasActivo)).length === 0 && (
                 <p className="text-sm text-[#888] py-6 text-center">Sin reservas para {selectedCabana}</p>
               )}
             </div>
@@ -1258,7 +1269,7 @@ export default function Disponibilidad() {
                   <div className="space-y-1.5 max-h-40 overflow-y-auto">
                     {reservas
                       .filter((r) => {
-                        if (!reservaIncluyeCabana(r, selectedCabana)) return false
+                        if (!reservaIncluyeCabana(r, selectedCabana, cabanasActivo)) return false
                         const ent = parseISO(r.fecha_entrada)
                         const sal = parseISO(r.fecha_salida)
                         return sal >= startDate && ent <= endDate
@@ -1280,7 +1291,7 @@ export default function Disponibilidad() {
                         </div>
                       ))}
                     {reservas.filter((r) => {
-                      if (!reservaIncluyeCabana(r, selectedCabana)) return false
+                      if (!reservaIncluyeCabana(r, selectedCabana, cabanasActivo)) return false
                       const ent = parseISO(r.fecha_entrada)
                       const sal = parseISO(r.fecha_salida)
                       return sal >= startDate && ent <= endDate

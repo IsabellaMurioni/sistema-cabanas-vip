@@ -25,11 +25,53 @@ export function shadeColor(hex, percent) {
   return '#' + (0x1000000 + newR * 0x10000 + newG * 0x100 + newB).toString(16).slice(1).toUpperCase()
 }
 
+// ── Nombres anteriores de cabaña ─────────────────────────────
+// `reservas.cabana` es texto libre: una COPIA del nombre de la cabaña
+// al momento de crear la reserva, no una referencia viva (confirmado
+// en 001_schema.sql — `cabana text not null`, sin FK). Cuando se
+// renombra una cabaña (ver 030_mimmo_los_amigos_rename.sql), esa copia
+// vieja NUNCA se reescribe a propósito — así que una reserva creada
+// antes del rename sigue guardando el nombre viejo para siempre.
+// `cabanas.nombres_anteriores` (text[], mismo patrón nullable/array
+// que ya usa `grupo`) guarda esos nombres viejos junto al actual, para
+// que la reserva vieja pueda seguir resolviendo a la cabaña correcta
+// sin tocar NINGUNA fila de `reservas`.
+//
+// `cabinMatchesName` es la ÚNICA fuente de verdad para "¿este string
+// corresponde a ESTA cabaña?" en toda la app — matchea por el nombre
+// ACTUAL o por cualquiera de sus nombres anteriores. Todo lo demás acá
+// abajo (resolverColorCabana, nombreActualDeCabana) y en
+// Disponibilidad.jsx/Reservas.jsx/Ganancias.jsx se apoya en esta
+// función en vez de reimplementar la comparación.
+export function cabinMatchesName(cabanaRow, nombre) {
+  if (!cabanaRow || !nombre) return false
+  if (cabanaRow.nombre === nombre) return true
+  return (cabanaRow.nombres_anteriores || []).includes(nombre)
+}
+
+// Dado el nombre actual O cualquier nombre anterior de una cabaña,
+// devuelve su nombre ACTUAL — o el mismo string sin cambios si no
+// matchea ninguna cabaña conocida (cabaña eliminada, dato inesperado,
+// o `cabanasActivo` todavía sin cargar: se degrada al string tal cual,
+// el mismo comportamiento que había antes de que existieran los
+// nombres anteriores). Pensada para "canonicalizar" un nombre ANTES de
+// reusar lógica de comparación exacta ya existente (cabanasPorGrupo,
+// el bucketing de Ganancias por cabaña), en vez de reescribir esa
+// lógica para que entienda nombres anteriores en cada lugar.
+export function nombreActualDeCabana(cabanasActivo, nombre) {
+  if (!nombre || !cabanasActivo) return nombre
+  const fila = cabanasActivo.find((cab) => cabinMatchesName(cab, nombre))
+  return fila ? fila.nombre : nombre
+}
+
 // Color de una cabaña por nombre, dada la lista de cabañas del
 // complejo activo — antes vivía como closure sobre `cabanasActivo`
 // (estado de React); ahora toma esos datos como parámetro explícito.
+// Matchea por nombre actual o anterior (cabinMatchesName) para que una
+// reserva vieja siga mostrando el color real de su cabaña, no el gris
+// de fallback.
 export function resolverColorCabana(cabanasActivo, nombreCabana) {
-  const c = cabanasActivo.find((cab) => cab.nombre === nombreCabana)
+  const c = cabanasActivo.find((cab) => cabinMatchesName(cab, nombreCabana))
   return c?.color || '#64748b'
 }
 

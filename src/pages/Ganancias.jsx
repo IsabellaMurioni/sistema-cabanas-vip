@@ -6,7 +6,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   PieChart, Pie, Cell, LineChart, Line,
 } from 'recharts'
-import { useComplejo } from '../context/ComplejoContext'
+import { useComplejo, nombreActualDeCabana } from '../context/ComplejoContext'
 import { validarMontoMovimiento, resumenMovimientos } from './CajaTemporada'
 import { fechaEstaCerrada, labelCierre } from '../lib/cierres'
 import DateRangePicker from '../components/DateRangePicker'
@@ -76,6 +76,30 @@ export function inRange(dateStr, desdeISO, hastaISO) {
 
 export function sumField(arr, field) {
   return arr.reduce((s, r) => s + (Number(r[field]) || 0), 0)
+}
+
+// "Top cabañas del período" — bucketea por el nombre ACTUAL de la
+// cabaña (vía nombreActualDeCabana, que matchea nombre actual O
+// cualquiera de sus nombres anteriores — ver cabinMatchesName en
+// ComplejoContext.jsx), no por el string crudo de r.cabana. Una
+// cabaña renombrada tenía reservas viejas guardadas con el nombre
+// viejo y nuevas con el nombre nuevo; sin normalizar, aparecían como
+// dos cabañas distintas acá, partiendo en dos la facturación de una
+// misma cabaña física. Una reserva multi-cabaña (r.cabana con "\n")
+// no matchea ninguna cabaña conocida y queda tal cual, como una
+// entrada propia — limitación pre-existente (no se divide por
+// cabaña), no agravada ni arreglada acá, fuera de alcance de este fix.
+export function agruparPorCabana(reservas, cabanasActivo) {
+  const acc = {}
+  for (const r of reservas) {
+    const cab = nombreActualDeCabana(cabanasActivo, r.cabana)
+    if (!acc[cab]) acc[cab] = { reservas: 0, monto: 0 }
+    acc[cab].reservas += 1
+    acc[cab].monto += r.monto_total || 0
+  }
+  return Object.entries(acc)
+    .map(([cab, d]) => ({ cabana: cab, reservas: d.reservas, monto: d.monto }))
+    .sort((a, b) => b.monto - a.monto)
 }
 
 // Cobrado/pendiente de UNA reserva — cobradoRow siempre capea en
@@ -200,7 +224,7 @@ export async function fetchMovimientosPorComplejo(supabase, complejoId) {
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function Ganancias() {
-  const { getCabanaColor, complejoActivo } = useComplejo()
+  const { getCabanaColor, complejoActivo, cabanasActivo } = useComplejo()
   const isVip = complejoActivo?.slug === 'cabanas-vip'
   const [reservas, setReservas]       = useState([])
   const [silvia, setSilvia]           = useState([])
@@ -467,17 +491,10 @@ export default function Ganancias() {
   const juliGastos   = fJuliGastos.reduce((s,r) => s + (r.importe||0) - (r.devolucion||0), 0)
 
   // ── Income by cabin ────────────────────────────────────────────────────────
-  const porCabana = useMemo(() => {
-    const acc = {}
-    for (const r of fReservas) {
-      if (!acc[r.cabana]) acc[r.cabana] = { reservas: 0, monto: 0 }
-      acc[r.cabana].reservas += 1
-      acc[r.cabana].monto += r.monto_total || 0
-    }
-    return Object.entries(acc)
-      .map(([cab, d]) => ({ cabana: cab, reservas: d.reservas, monto: d.monto }))
-      .sort((a, b) => b.monto - a.monto)
-  }, [fReservas])
+  const porCabana = useMemo(
+    () => agruparPorCabana(fReservas, cabanasActivo),
+    [fReservas, cabanasActivo]
+  )
 
   // ── Expense by category ────────────────────────────────────────────────────
   const porCategoria = useMemo(() => {

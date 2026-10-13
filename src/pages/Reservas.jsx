@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { format, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
-import { useComplejo } from '../context/ComplejoContext'
+import { useComplejo, nombreActualDeCabana } from '../context/ComplejoContext'
 
 // Este archivo exporta fetchReservasPorComplejo además del componente
 // default, para que los tests de integración (tests/integration/)
@@ -51,8 +51,17 @@ const estadoBadge = {
 // + badge de color. Se reusa tal cual para cada línea cuando `cabana`
 // trae varias (reservas multi-cabaña, ver ReservaForm.jsx: `cabana`
 // queda con los nombres unidos por "\n").
-function UnaCabanaBadge({ cabana, getCabanaColor, cabanasPorGrupo }) {
-  const grupo = cabanasPorGrupo.find((s) => s.cabanas.includes(cabana))?.grupo
+function UnaCabanaBadge({ cabana, getCabanaColor, cabanasPorGrupo, cabanasActivo }) {
+  // cabanasPorGrupo sólo tiene nombres ACTUALES — una reserva guardada
+  // con el nombre viejo de una cabaña renombrada (ver
+  // nombreActualDeCabana en ComplejoContext.jsx) nunca matchearía acá
+  // sin canonicalizar primero. getCabanaColor ya es alias-aware por su
+  // cuenta (resolverColorCabana), pero el TEXTO del badge también se
+  // muestra canonicalizado a propósito — Lorena tiene que ver el
+  // nombre actual de la cabaña en todas partes, incluso para una
+  // reserva vieja guardada con el nombre de antes del rename.
+  const nombreActual = nombreActualDeCabana(cabanasActivo, cabana)
+  const grupo = cabanasPorGrupo.find((s) => s.cabanas.includes(nombreActual))?.grupo
   return (
     <div className="inline-flex flex-col items-start gap-0.5">
       {grupo && (
@@ -62,22 +71,22 @@ function UnaCabanaBadge({ cabana, getCabanaColor, cabanasPorGrupo }) {
       )}
       <span
         className="inline-flex items-center px-2 py-0.5 rounded-[8px] text-xs font-semibold text-white"
-        style={{ backgroundColor: getCabanaColor(cabana) }}
+        style={{ backgroundColor: getCabanaColor(nombreActual) }}
       >
-        {cabana}
+        {nombreActual}
       </span>
     </div>
   )
 }
 
 function CabanaBadge({ cabana }) {
-  const { getCabanaColor, cabanasPorGrupo } = useComplejo()
+  const { getCabanaColor, cabanasPorGrupo, cabanasActivo } = useComplejo()
   const nombres = (cabana || '').split('\n').filter(Boolean)
 
   // Una sola cabaña (o ninguna): exactamente el render de siempre, sin
   // envoltorio extra — nada cambia para el caso común.
   if (nombres.length <= 1) {
-    return <UnaCabanaBadge cabana={cabana} getCabanaColor={getCabanaColor} cabanasPorGrupo={cabanasPorGrupo} />
+    return <UnaCabanaBadge cabana={cabana} getCabanaColor={getCabanaColor} cabanasPorGrupo={cabanasPorGrupo} cabanasActivo={cabanasActivo} />
   }
 
   // Varias cabañas: se agrupan por bloque/grupo primero (mismo
@@ -87,18 +96,17 @@ function CabanaBadge({ cabana }) {
   // "MIMMO I" aparecía duplicado). Orden de primera aparición de cada
   // grupo, no sólo cabañas consecutivas del mismo grupo — así da lo
   // mismo en qué orden se hayan tildado las cabañas en el picker.
-  // Varias cabañas: se agrupan por bloque/grupo primero (mismo
-  // cabanasPorGrupo que ya usa CabinMultiPicker para "MIMMO I"/"MIMMO
-  // II") para que el badge de grupo salga UNA sola vez por grupo — no
-  // una vez por cabaña (bug real reportado: con 2 cabañas de MIMMO I,
-  // "MIMMO I" aparecía duplicado). Orden de primera aparición de cada
-  // grupo, no sólo cabañas consecutivas del mismo grupo — así da lo
-  // mismo en qué orden se hayan tildado las cabañas en el picker.
+  // Canonicaliza cada nombre a su cabaña ACTUAL antes de buscar el
+  // grupo (mismo motivo que en UnaCabanaBadge) — así una cabaña
+  // renombrada sigue agrupando bien aunque la reserva tenga el nombre
+  // viejo. El nombre canonicalizado es también el que se guarda y se
+  // muestra (texto del badge) — mismo criterio que UnaCabanaBadge.
   const porGrupo = new Map()
   nombres.forEach((nombreCabana) => {
-    const grupo = cabanasPorGrupo.find((s) => s.cabanas.includes(nombreCabana))?.grupo || null
+    const nombreActual = nombreActualDeCabana(cabanasActivo, nombreCabana)
+    const grupo = cabanasPorGrupo.find((s) => s.cabanas.includes(nombreActual))?.grupo || null
     if (!porGrupo.has(grupo)) porGrupo.set(grupo, [])
-    porGrupo.get(grupo).push(nombreCabana)
+    porGrupo.get(grupo).push(nombreActual)
   })
 
   return (
@@ -111,13 +119,13 @@ function CabanaBadge({ cabana }) {
             </span>
           )}
           <div className="flex flex-col gap-1">
-            {cabanasDelGrupo.map((nombreCabana) => (
+            {cabanasDelGrupo.map((nombreActual) => (
               <span
-                key={nombreCabana}
+                key={nombreActual}
                 className="inline-flex items-center px-2 py-0.5 rounded-[8px] text-xs font-semibold text-white"
-                style={{ backgroundColor: getCabanaColor(nombreCabana) }}
+                style={{ backgroundColor: getCabanaColor(nombreActual) }}
               >
-                {nombreCabana}
+                {nombreActual}
               </span>
             ))}
           </div>

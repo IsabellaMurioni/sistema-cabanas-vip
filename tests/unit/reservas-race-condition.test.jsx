@@ -16,7 +16,14 @@ import { MemoryRouter } from 'react-router-dom'
 import Reservas from '../../src/pages/Reservas'
 
 vi.mock('../../src/lib/supabase', () => ({ supabase: { from: vi.fn() } }))
-vi.mock('../../src/context/ComplejoContext', () => ({ useComplejo: vi.fn() }))
+// Mock parcial: Reservas.jsx importa nombreActualDeCabana (rename de
+// cabañas, ver 030_mimmo_los_amigos_rename_definitivo.sql) directo de
+// este módulo, no a través de useComplejo() — tiene que seguir siendo
+// la función real, sólo useComplejo() se reemplaza.
+vi.mock('../../src/context/ComplejoContext', async (importOriginal) => {
+  const actual = await importOriginal()
+  return { ...actual, useComplejo: vi.fn() }
+})
 
 import { supabase } from '../../src/lib/supabase'
 import { useComplejo } from '../../src/context/ComplejoContext'
