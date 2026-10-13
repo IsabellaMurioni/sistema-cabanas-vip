@@ -261,6 +261,23 @@ function todayStr() {
   return format(startOfToday(), 'yyyy-MM-dd')
 }
 
+// Una reserva multi-cabaña guarda `cabana` como varios nombres
+// separados por "\n" (ver CabinMultiPicker en ReservaForm.jsx) — antes,
+// toda esta pantalla comparaba `reserva.cabana === cabana` (igualdad
+// exacta de string), así que una reserva así NUNCA matcheaba NINGUNA
+// fila (el string con "\n" nunca es igual a un nombre de cabaña suelto)
+// y quedaba directamente invisible acá, aunque sí existiera y se viera
+// bien en Reservas/ReservaDetalle. Bug real, no sólo future-proofing.
+// Fix: partir por "\n" y chequear inclusión — para una reserva de una
+// sola cabaña, el split da un array de 1 elemento y el resultado es
+// idéntico a la comparación de igualdad de antes. Única fuente de
+// verdad para esta relación reserva↔cabaña en todo este archivo — cada
+// lugar que antes hacía `r.cabana === cabana`/`r.cabana !== cabana`
+// pasa a usar esta función en vez de reimplementar el split.
+export function reservaIncluyeCabana(reserva, cabana) {
+  return (reserva?.cabana || '').split('\n').includes(cabana)
+}
+
 // ── CalendarPicker ──────────────────────────────────────────
 // `className` posiciona el contenedor raíz (para que el header de
 // Disponibilidad pueda hacerlo flex-1 en mobile y volver a su ancho de
@@ -495,7 +512,7 @@ function TimelineRow({ cabana, reservas, startDate, endDate, height = 40, onRese
   const [tooltip, setTooltip] = useState(null)
 
   const relevantReservas = reservas.filter((r) => {
-    if (r.cabana !== cabana) return false
+    if (!reservaIncluyeCabana(r, cabana)) return false
     const ent = parseISO(r.fecha_entrada)
     const sal = parseISO(r.fecha_salida)
     return sal >= startDate && ent <= endDate
@@ -788,10 +805,10 @@ export default function Disponibilidad() {
     const map = {}
     CABANAS.forEach((cab) => {
       const current = reservas.find(
-        (r) => r.cabana === cab && r.fecha_entrada <= tStr && tStr <= r.fecha_salida
+        (r) => reservaIncluyeCabana(r, cab) && r.fecha_entrada <= tStr && tStr <= r.fecha_salida
       )
       const upcoming = reservas
-        .filter((r) => r.cabana === cab && r.fecha_entrada > tStr)
+        .filter((r) => reservaIncluyeCabana(r, cab) && r.fecha_entrada > tStr)
         .sort((a, b) => a.fecha_entrada.localeCompare(b.fecha_entrada))[0]
       map[cab] = { current, upcoming, occupied: Boolean(current) }
     })
@@ -1058,7 +1075,7 @@ export default function Disponibilidad() {
             <div className="space-y-2">
               <p className="section-label">Reservas — {selectedCabana}</p>
               {reservas
-                .filter(r => r.cabana === selectedCabana)
+                .filter(r => reservaIncluyeCabana(r, selectedCabana))
                 .sort((a, b) => a.fecha_entrada.localeCompare(b.fecha_entrada))
                 .map(r => (
                   <div key={r.id} className="bg-white border border-[#f0e6d8] rounded-[12px] px-4 py-3 cursor-pointer hover:border-[var(--color-primario)] transition-colors"
@@ -1071,7 +1088,7 @@ export default function Disponibilidad() {
                     <p className="text-xs text-[#888] mt-0.5">{r.fecha_entrada} → {r.fecha_salida}</p>
                   </div>
                 ))}
-              {reservas.filter(r => r.cabana === selectedCabana).length === 0 && (
+              {reservas.filter(r => reservaIncluyeCabana(r, selectedCabana)).length === 0 && (
                 <p className="text-sm text-[#888] py-6 text-center">Sin reservas para {selectedCabana}</p>
               )}
             </div>
@@ -1084,12 +1101,19 @@ export default function Disponibilidad() {
                 if (!r) return []
                 return [{ ...r, _cabana: cabana }]
               }).sort((a, b) => a.fecha_entrada.localeCompare(b.fecha_entrada)).map(r => (
-                <div key={r.id} className="bg-white border border-[#f0e6d8] rounded-[12px] px-4 py-3 cursor-pointer hover:border-[var(--color-primario)]"
+                // key por (reserva, cabaña) — no sólo r.id: una reserva
+                // multi-cabaña que es la actual/próxima de MÁS de una
+                // cabaña aparece una vez por cada una acá (mismo criterio
+                // que las barras de la grilla), así que r.id solo no
+                // alcanza para distinguirlas. Mismo motivo para mostrar
+                // r._cabana (la cabaña puntual de ESTA fila) en vez de
+                // r.cabana (el string crudo, con "\n" si es multi-cabaña).
+                <div key={`${r.id}-${r._cabana}`} className="bg-white border border-[#f0e6d8] rounded-[12px] px-4 py-3 cursor-pointer hover:border-[var(--color-primario)]"
                   onClick={() => setPopup(r)}>
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: getCabanaColor(r.cabana) }} />
-                    <span className="text-xs font-semibold text-[#888]">{r.cabana}</span>
-                    <span className="font-mono text-xs font-bold ml-auto" style={{ color: getCabanaColor(r.cabana) }}>{r.codigo}</span>
+                    <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: getCabanaColor(r._cabana) }} />
+                    <span className="text-xs font-semibold text-[#888]">{r._cabana}</span>
+                    <span className="font-mono text-xs font-bold ml-auto" style={{ color: getCabanaColor(r._cabana) }}>{r.codigo}</span>
                   </div>
                   <p className="text-sm font-semibold text-[#111]">{r.nombre_apellido}</p>
                   <p className="text-xs text-[#888] mt-0.5">{r.fecha_entrada} → {r.fecha_salida}</p>
@@ -1234,7 +1258,7 @@ export default function Disponibilidad() {
                   <div className="space-y-1.5 max-h-40 overflow-y-auto">
                     {reservas
                       .filter((r) => {
-                        if (r.cabana !== selectedCabana) return false
+                        if (!reservaIncluyeCabana(r, selectedCabana)) return false
                         const ent = parseISO(r.fecha_entrada)
                         const sal = parseISO(r.fecha_salida)
                         return sal >= startDate && ent <= endDate
@@ -1256,7 +1280,7 @@ export default function Disponibilidad() {
                         </div>
                       ))}
                     {reservas.filter((r) => {
-                      if (r.cabana !== selectedCabana) return false
+                      if (!reservaIncluyeCabana(r, selectedCabana)) return false
                       const ent = parseISO(r.fecha_entrada)
                       const sal = parseISO(r.fecha_salida)
                       return sal >= startDate && ent <= endDate
