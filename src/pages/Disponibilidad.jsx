@@ -132,13 +132,19 @@ const BUFFER_COLUMNA_NOMBRE = 6
 const ANCHO_COLUMNA_NOMBRE_FALLBACK = 136
 
 let ctxMedicionTexto = null
-function anchoTextoPx(texto) {
+// `font` opcional (default FONT_COLUMNA_NOMBRE, el de "Ver todas") para
+// poder reusar esta misma medición de Canvas con OTRO font real — ver
+// FONT_NOMBRE_SIDEBAR_DESKTOP más abajo, el de la lista de cabañas de
+// "Ver por cabaña" (14px/500, distinto del 12px/600 de "Ver todas"). No
+// rompe ningún caller existente: sin este parámetro, el comportamiento
+// es IDÉNTICO a antes.
+function anchoTextoPx(texto, font = FONT_COLUMNA_NOMBRE) {
   if (typeof document === 'undefined') return null
   if (!ctxMedicionTexto) {
     ctxMedicionTexto = document.createElement('canvas').getContext('2d')
   }
   if (!ctxMedicionTexto) return null
-  ctxMedicionTexto.font = FONT_COLUMNA_NOMBRE
+  ctxMedicionTexto.font = font
   return ctxMedicionTexto.measureText(texto).width
 }
 
@@ -195,14 +201,17 @@ const PADDING_VERTICAL_FILA_MOBILE = 20
 // mismo algoritmo greedy que usa un navegador para white-space:normal,
 // implementado con los mismos anchos de Canvas que ya usa
 // anchoTextoPx, para que la cuenta de líneas no se desincronice de lo
-// que se ve de verdad.
-export function contarLineasNecesarias(texto, anchoDisponible) {
+// que se ve de verdad. `font` opcional, mismo motivo/default que en
+// anchoTextoPx — permite reusar este mismo algoritmo con el font real
+// de la lista de "Ver por cabaña" (ver calcularAlturaFilaSidebarDesktop
+// más abajo) sin reimplementarlo.
+export function contarLineasNecesarias(texto, anchoDisponible, font = FONT_COLUMNA_NOMBRE) {
   const palabras = texto.split(' ')
-  const anchoEspacio = anchoTextoPx(' ') ?? 0
+  const anchoEspacio = anchoTextoPx(' ', font) ?? 0
   let lineas = 1
   let anchoLineaActual = 0
   palabras.forEach((palabra) => {
-    const anchoPalabra = anchoTextoPx(palabra) ?? 0
+    const anchoPalabra = anchoTextoPx(palabra, font) ?? 0
     const candidato = anchoLineaActual === 0 ? anchoPalabra : anchoLineaActual + anchoEspacio + anchoPalabra
     if (candidato <= anchoDisponible || anchoLineaActual === 0) {
       anchoLineaActual = candidato
@@ -229,6 +238,80 @@ export function calcularAlturaFilaMobile(nombresCabanas) {
     ...nombresCabanas.map((n) => contarLineasNecesarias(n, anchoDisponibleTexto))
   )
   return Math.ceil(maxLineas * ALTURA_LINEA_NOMBRE_MOBILE + PADDING_VERTICAL_FILA_MOBILE)
+}
+
+// ── Lista de cabañas en desktop "Ver por cabaña" ─────────────
+// Mismo tratamiento que ya tiene la grilla mobile de "Ver todas" desde
+// el 02/10 (calcularAlturaFilaMobile, arriba): en vez de truncar el
+// nombre con ellipsis en una sola línea, se deja wrapear normal (hasta
+// 2 líneas) y TODAS las filas de la lista comparten la misma altura
+// mínima — la que necesita el nombre más exigente DE ESE complejo
+// (peor caso), no una altura distinta por fila. Complejos con nombres
+// cortos (todos entran en 1 línea) no cambian de altura frente a hoy;
+// sólo complejos con algún nombre que de verdad necesita 2 líneas (hoy,
+// Mimmo: "2 Ambientes Planta Baja/Alta 4/5/6/7") crecen más allá de esa
+// base — uniforme para las 12 cabañas de Mimmo, no sólo esas 4.
+//
+// Font real del <span> de nombre en este sidebar: 500 14px Inter — a
+// propósito, un font DISTINTO al de "Ver todas" (600 12px), así que no
+// se puede reusar FONT_COLUMNA_NOMBRE tal cual (daría anchos
+// equivocados). anchoTextoPx/contarLineasNecesarias ahora aceptan un
+// font explícito (ver más arriba) para no reimplementar la medición.
+const FONT_NOMBRE_SIDEBAR_DESKTOP = "500 14px 'Inter', sans-serif"
+
+// Ancho disponible para el texto del nombre dentro de la fila: ancho
+// fijo del panel (220) - padding horizontal del botón (12px 16px ->
+// 16+16=32) - dot (10) - gap entre dot y nombre (10) = 168. Si alguno
+// de esos valores cambia en el <button>/<span> de la fila más abajo,
+// hay que actualizar este número también — medido/validado contra
+// Canvas real (Chromium) en tests/unit/disponibilidad-sidebar-cabana-altura.test.jsx.
+const ANCHO_DISPONIBLE_NOMBRE_SIDEBAR_DESKTOP = 168
+
+// line-height del <span> de nombre (14px * 1.3, mismo multiplicador
+// que ya usa ALTURA_LINEA_NOMBRE_MOBILE) — fijado inline en el <span>
+// real más abajo con este mismo valor, para que esta cuenta nunca se
+// desincronice de lo que el navegador renderiza.
+const ALTURA_LINEA_NOMBRE_SIDEBAR_DESKTOP = 18.2
+// line-height del <span> de estado (12px * 1.3), en su propia línea
+// debajo del nombre.
+const ALTURA_LINEA_STATUS_SIDEBAR_DESKTOP = 15.6
+// Gap vertical entre el bloque de nombre (1 o 2 líneas) y la línea de
+// estado debajo.
+const GAP_NOMBRE_STATUS_SIDEBAR_DESKTOP = 4
+// Padding vertical del <button> de fila (12px arriba + 12px abajo —
+// mismo valor que ya usa su `padding: '12px 16px'`).
+const PADDING_VERTICAL_FILA_SIDEBAR_DESKTOP = 24
+
+export function calcularAlturaFilaSidebarDesktop(nombresCabanas) {
+  if (!nombresCabanas || nombresCabanas.length === 0) return 0
+  const maxLineas = Math.max(
+    ...nombresCabanas.map((n) =>
+      contarLineasNecesarias(n, ANCHO_DISPONIBLE_NOMBRE_SIDEBAR_DESKTOP, FONT_NOMBRE_SIDEBAR_DESKTOP)
+    )
+  )
+  return Math.ceil(
+    PADDING_VERTICAL_FILA_SIDEBAR_DESKTOP +
+    maxLineas * ALTURA_LINEA_NOMBRE_SIDEBAR_DESKTOP +
+    GAP_NOMBRE_STATUS_SIDEBAR_DESKTOP +
+    ALTURA_LINEA_STATUS_SIDEBAR_DESKTOP
+  )
+}
+
+// Corte DELIBERADO de línea para el patrón "<número> Ambientes <resto>"
+// (ej. "2 Ambientes Planta Baja 4") — NO es wrap por ancho de
+// contenedor (eso fue lo que se probó primero y se rechazó: partía
+// "2 Ambientes Planta Baja" / "4", un corte feo que depende de cuánto
+// entre en el ancho disponible). Acá el corte es fijo sobre el string
+// mismo: línea 1 SIEMPRE "<número> Ambientes", línea 2 SIEMPRE
+// "<resto>" ("Planta Baja 4"), sin importar el ancho de la fila.
+// Cualquier nombre que no matchea el patrón (todos los demás, en
+// cualquier complejo — "Chalet 3 Ambientes", "Confort 2", "Clásica 8",
+// cabañas de otros complejos, etc.) devuelve UNA sola línea — no se le
+// fuerza ningún corte, se sigue viendo exactamente igual que antes.
+export function partirNombreCabana(nombre) {
+  const match = /^(\d+)\s+Ambientes\s+(.+)$/i.exec((nombre ?? '').trim())
+  if (!match) return [nombre]
+  return [`${match[1]} Ambientes`, match[2]]
 }
 
 // Breakpoint mobile — mismo que el `sm:` de Tailwind (640px) que ya
@@ -859,6 +942,15 @@ export default function Disponibilidad() {
     return Math.max(base, calcularAlturaFilaMobile(CABANAS))
   }, [esMobile, numCabanas, CABANAS])
 
+  // Altura uniforme de fila para la lista de cabañas de "Ver por
+  // cabaña" en desktop (ver calcularAlturaFilaSidebarDesktop más
+  // arriba) — independiente de rowH/ROW_H_SINGLE, que son de la grilla
+  // "Ver todas"/el timeline, no de este sidebar.
+  const alturaFilaSidebar = useMemo(
+    () => calcularAlturaFilaSidebarDesktop(CABANAS),
+    [CABANAS]
+  )
+
   return (
     <div className="flex flex-col h-full fade-in">
       {/* ── Header ── */}
@@ -1161,16 +1253,36 @@ export default function Disponibilidad() {
                       : 'Libre'
                   const dotColor = st?.current ? color : st?.upcoming ? 'var(--color-primario)' : '#4ade80'
                   const textColor = st?.current ? color : st?.upcoming ? '#888888' : '#16a34a'
+                  const lineasNombre = partirNombreCabana(cabana)
                   return (
+                    // Nombre arriba + estado abajo, en vez de los 3 en
+                    // una sola fila horizontal. El nombre usa un corte
+                    // DELIBERADO de línea (partirNombreCabana) para el
+                    // patrón "<número> Ambientes <resto>" — línea 1
+                    // "<número> Ambientes", línea 2 "<resto>", fijo,
+                    // NO un wrap por ancho (eso partía "2 Ambientes
+                    // Planta Baja" / "4", mal). Cualquier otro nombre no
+                    // se corte fuerza — whiteSpace:'normal' lo deja
+                    // wrapear solo si algún día no entra, como wrapeaba
+                    // la grilla mobile de "Ver todas" desde el 02/10.
+                    // minHeight (no height) fijo e IGUAL para todas las
+                    // filas del complejo (alturaFilaSidebar, calculado
+                    // una sola vez arriba por el peor caso) — ninguna
+                    // fila calcula su propia altura. justifyContent:
+                    // 'center' centra el bloque de 1 o 2 líneas dentro
+                    // de esa altura uniforme, para que una cabaña con
+                    // nombre corto no quede pegada arriba con hueco
+                    // vacío debajo.
                     <button
                       key={cabana}
                       onClick={() => setSelectedCabana(cabana)}
                       style={{
                         display: 'flex',
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: 10,
+                        flexDirection: 'column',
+                        alignItems: 'flex-start',
+                        justifyContent: 'center',
                         width: '100%',
+                        minHeight: alturaFilaSidebar,
                         padding: '12px 16px',
                         borderRadius: 10,
                         border: selected ? `2px solid ${color}` : '1px solid #f0e6d8',
@@ -1181,20 +1293,31 @@ export default function Disponibilidad() {
                         textAlign: 'left',
                       }}
                     >
-                      <span style={{
-                        width: 10, height: 10, borderRadius: '50%',
-                        backgroundColor: dotColor, flexShrink: 0,
-                      }} />
-                      <span style={{
-                        fontFamily: "'Inter', sans-serif", fontSize: 14, fontWeight: 500,
-                        color: '#111111', flex: 1, whiteSpace: 'nowrap',
-                        overflow: 'hidden', textOverflow: 'ellipsis',
-                      }}>
-                        {cabana}
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%' }}>
+                        <span style={{
+                          width: 10, height: 10, borderRadius: '50%',
+                          backgroundColor: dotColor, flexShrink: 0,
+                        }} />
+                        <span style={{
+                          fontFamily: "'Inter', sans-serif", fontSize: 14, fontWeight: 500,
+                          color: '#111111', flex: 1, whiteSpace: 'normal',
+                          lineHeight: `${ALTURA_LINEA_NOMBRE_SIDEBAR_DESKTOP}px`,
+                        }}>
+                          {lineasNombre.length === 2 ? (
+                            <>
+                              <div style={{ whiteSpace: 'nowrap' }}>{lineasNombre[0]}</div>
+                              <div style={{ whiteSpace: 'nowrap' }}>{lineasNombre[1]}</div>
+                            </>
+                          ) : (
+                            cabana
+                          )}
+                        </span>
                       </span>
                       <span style={{
                         fontSize: 12, fontWeight: 500, color: textColor,
-                        marginLeft: 'auto', flexShrink: 0, maxWidth: 80,
+                        lineHeight: `${ALTURA_LINEA_STATUS_SIDEBAR_DESKTOP}px`,
+                        marginTop: GAP_NOMBRE_STATUS_SIDEBAR_DESKTOP,
+                        marginLeft: 20, maxWidth: 148,
                         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                       }}>
                         {statusText}
