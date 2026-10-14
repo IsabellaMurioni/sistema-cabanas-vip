@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { supabase } from '../lib/supabase'
 import FileUpload, { getPublicUrl } from '../components/FileUpload'
 import { format, parseISO, getMonth, getYear } from 'date-fns'
@@ -152,8 +153,24 @@ function EmptyOrLoading({ loading }) {
   )
 }
 
-function Modal({ title, onClose, children }) {
-  return (
+// Bug real reportado: con una caja larga (muchos movimientos, página
+// scrolleada), el modal aparecía cortado/pegado al contenido scrolleado
+// en vez de centrado en el viewport. Causa real: el wrapper de cada
+// página (`className="fade-in"`, ver src/index.css) corre
+// `animation: fadeIn ... forwards`, cuyo keyframe final deja
+// `transform: translateY(0)` aplicado PERMANENTEMENTE (fill-mode
+// forwards retiene el último keyframe). Cualquier transform ≠ none en
+// un ancestro crea un nuevo "containing block" para descendientes
+// `position: fixed` — así que el `fixed inset-0` de este modal quedaba
+// anclado a la caja de ese wrapper (que puede ser más alta que el
+// viewport con muchos movimientos) en vez de al viewport real,
+// scrolleando junto con la página y cortándose abajo. Fix: createPortal
+// a document.body — el nodo del modal queda fuera del subárbol del
+// wrapper por completo, así que su `position: fixed` siempre es
+// relativo al viewport real, sin importar qué transform tenga
+// cualquier ancestro de la página (presente o futuro).
+export function Modal({ title, onClose, children }) {
+  return createPortal(
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div className="bg-white rounded-[16px] border border-[#f0e6d8] w-full max-w-md max-h-[92vh] overflow-y-auto"
            onClick={e => e.stopPropagation()}>
@@ -162,7 +179,8 @@ function Modal({ title, onClose, children }) {
         </div>
         <div className="p-6">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 

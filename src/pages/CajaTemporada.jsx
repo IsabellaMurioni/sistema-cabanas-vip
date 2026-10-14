@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { supabase } from '../lib/supabase'
 import { format, parseISO, getMonth, getYear } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -248,8 +249,19 @@ function Td({ children, right, cls, title }) {
   )
 }
 
-function Modal({ title, onClose, children, wide }) {
-  return (
+// Bug real reportado: con una caja larga (muchos movimientos, página
+// scrolleada), el modal ("Nuevo movimiento" Y "Cerrar caja", los dos
+// usan este mismo componente) aparecía cortado/pegado al contenido
+// scrolleado en vez de centrado en el viewport. Mismo componente
+// duplicado que el de Caja.jsx (Cabañas VIP) — ver el comentario ahí
+// para la causa real completa: el wrapper `className="fade-in"` de
+// cada página deja un `transform: translateY(0)` permanente (animation
+// fill-mode: forwards), que crea un containing block nuevo para
+// `position: fixed` y rompe el anclaje al viewport real. Fix:
+// createPortal a document.body en los dos Modal (Caja.jsx y este), para
+// que el nodo del modal quede fuera del subárbol de ese wrapper.
+export function Modal({ title, onClose, children, wide }) {
+  return createPortal(
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div className={`bg-white rounded-[16px] border border-[#f0e6d8] w-full ${wide ? 'max-w-xl' : 'max-w-md'} max-h-[92vh] overflow-y-auto`}
            onClick={(e) => e.stopPropagation()}>
@@ -258,7 +270,8 @@ function Modal({ title, onClose, children, wide }) {
         </div>
         <div className="p-6">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
