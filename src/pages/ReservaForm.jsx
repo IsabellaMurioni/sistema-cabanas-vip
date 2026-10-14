@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import FileUpload from '../components/FileUpload'
 import { sendEmailConfirmacion, sendEmailRecibo } from '../lib/email'
-import { useComplejo } from '../context/ComplejoContext'
+import { useComplejo, nombreActualDeCabana } from '../context/ComplejoContext'
 import { fechaEstaCerrada, labelCierre } from '../lib/cierres'
 import { totalPagadoReserva, excedeSaldoReserva } from '../lib/pagosReserva'
 
@@ -439,13 +439,28 @@ async function syncMovimientoSena(complejoActivo, reservaId, codigo, nombre, sen
 // complejo — usada por el chequeo de conflicto de fechas. Exportada
 // para que los tests de integración (tests/integration/) puedan
 // ejercitarla directamente en vez de reimplementarla.
-export async function fetchReservasOcupadasPorCabana(supabase, complejoId, cabana) {
-  return supabase
+// Bug real pre-existente: antes esta función filtraba con
+// `.eq('cabana', cabana)` — match exacto contra TODO el valor de la
+// columna. Una reserva multi-cabaña ajena (p.ej. `cabana = "Confort
+// 2\nConfort 3"`) nunca matcheaba al candidatear "Confort 3" solo,
+// porque el valor completo de la columna no es igual a "Confort 3" —
+// la cabaña quedaba invisible para el chequeo de conflicto. Ahora se
+// trae toda la ocupación activa del complejo y se resuelve
+// línea-por-línea (split por "\n") contra el nombre candidato — con
+// `nombreActualDeCabana` (ComplejoContext.jsx), la misma única fuente
+// de verdad que ya resuelve nombres viejos/renombrados en el resto de
+// la app, para no reimplementar esa comparación acá.
+export async function fetchReservasOcupadasPorCabana(supabase, complejoId, cabana, cabanasActivo) {
+  const { data, error } = await supabase
     .from('reservas')
-    .select('id, fecha_entrada, fecha_salida, nombre_apellido')
-    .eq('cabana', cabana)
+    .select('id, fecha_entrada, fecha_salida, nombre_apellido, cabana')
     .eq('complejo_id', complejoId)
     .neq('estado', 'Cancelada')
+  if (error) return { data: null, error }
+  const ocupadas = (data || []).filter((r) =>
+    (r.cabana || '').split('\n').some((linea) => nombreActualDeCabana(cabanasActivo, linea) === cabana)
+  )
+  return { data: ocupadas, error: null }
 }
 
 export function getConflicto(entrada, salida, ranges) {
@@ -613,7 +628,7 @@ function resolverPrecioReservaClasico(periodos, getPrecio, periodoEntrada, fecha
 export default function ReservaForm() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { complejoActivo, cabanasPorGrupo } = useComplejo()
+  const { complejoActivo, cabanasPorGrupo, cabanasActivo } = useComplejo()
   const isEdit = Boolean(id)
 
   const [form, setForm] = useState(EMPTY_FORM)
@@ -911,7 +926,7 @@ export default function ReservaForm() {
     let cancelado = false
     Promise.all(
       cabanasSeleccionadas.map((cabana) =>
-        fetchReservasOcupadasPorCabana(supabase, complejoActivo.id, cabana).then(({ data }) => [cabana, data || []])
+        fetchReservasOcupadasPorCabana(supabase, complejoActivo.id, cabana, cabanasActivo).then(({ data }) => [cabana, data || []])
       )
     ).then((entradas) => {
       if (cancelado) return
@@ -923,7 +938,7 @@ export default function ReservaForm() {
       setFechaConflicto(getConflictoMultiple(form.fecha_entrada, form.fecha_salida, mapa))
     })
     return () => { cancelado = true }
-  }, [cabanasSeleccionadas, isEdit, id, complejoActivo?.id])
+  }, [cabanasSeleccionadas, isEdit, id, complejoActivo?.id, cabanasActivo])
 
   const handleFechaEntrada = (value) => {
     const noches = calcNoches(value, form.fecha_salida)
@@ -1067,17 +1082,24 @@ export default function ReservaForm() {
     if (cabanasAChequear.length > 0 && form.fecha_entrada && form.fecha_salida) {
       const resultados = await Promise.all(
         cabanasAChequear.map(async (cabana) => {
+          // Mismo fix que fetchReservasOcupadasPorCabana más arriba: ya
+          // no se filtra por `.eq('cabana', cabana)` (exact-match contra
+          // toda la columna, ciego a reservas multi-cabaña ajenas) — se
+          // trae lo que matchea por fecha y se resuelve línea-por-línea
+          // con nombreActualDeCabana, alias-aware.
           let q = supabase
             .from('reservas')
-            .select('nombre_apellido, fecha_entrada, fecha_salida')
-            .eq('cabana', cabana)
+            .select('nombre_apellido, fecha_entrada, fecha_salida, cabana')
             .eq('complejo_id', complejoActivo.id)
             .neq('estado', 'Cancelada')
             .lt('fecha_entrada', form.fecha_salida)
             .gt('fecha_salida', form.fecha_entrada)
           if (isEdit) q = q.neq('id', id)
           const { data } = await q
-          return { cabana, overlaps: data || [] }
+          const overlaps = (data || []).filter((r) =>
+            (r.cabana || '').split('\n').some((linea) => nombreActualDeCabana(cabanasActivo, linea) === cabana)
+          )
+          return { cabana, overlaps }
         })
       )
       const conConflicto = resultados.filter((r) => r.overlaps.length > 0)

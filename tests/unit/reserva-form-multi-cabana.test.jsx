@@ -43,7 +43,7 @@ import { MemoryRouter } from 'react-router-dom'
 import ReservaForm from '../../src/pages/ReservaForm'
 
 vi.mock('../../src/lib/supabase', () => ({ supabase: { from: vi.fn() } }))
-vi.mock('../../src/context/ComplejoContext', () => ({ useComplejo: vi.fn() }))
+vi.mock('../../src/context/ComplejoContext', () => ({ useComplejo: vi.fn(), nombreActualDeCabana: (cabanasActivo, nombre) => nombre }))
 vi.mock('../../src/lib/email', () => ({
   sendEmailConfirmacion: vi.fn(),
   sendEmailRecibo: vi.fn(),
@@ -60,23 +60,32 @@ const COMPLEJO_VIP = { id: 'complejo-vip', slug: 'cabanas-vip', nombre: 'Cabaña
 // default), extendido con `cabanasOcupadas`: un mapa cabaña -> filas
 // ya "reservadas" para esa cabaña específica, para poder simular un
 // conflicto sólo en una cabaña puntual entre varias seleccionadas.
+//
+// El código real YA NO filtra por `.eq('cabana', cabana)` (fix del bug
+// multi-cabaña: ese exact-match contra TODA la columna no detectaba
+// una cabaña ocupada como parte de una reserva multi-cabaña ajena) —
+// ahora trae todas las reservas activas del complejo y resuelve
+// línea-por-línea del lado de la app. Este mock espeja eso: no filtra
+// por cabaña en la query, devuelve la unión de todas las filas de
+// `cabanasOcupadas` (cada una etiquetada con su propio `cabana`), y
+// deja que el código real decida cuáles aplican a cada candidata.
+// `esLike` distingue esta query de fetchNextCode (la única que usa
+// `.like('codigo', 'A%')` sobre `reservas`), que debe seguir
+// devolviendo [] como antes.
 function makeSupabaseMock({ cabanasOcupadas = {} } = {}) {
   let ultimoInsertReservas = null
   let cantidadInserts = 0
 
   const from = vi.fn((table) => {
-    let cabanaFiltro = null
     let esInsert = false
+    let esLike = false
     const builder = {
       select: () => builder,
-      eq: (campo, valor) => {
-        if (campo === 'cabana') cabanaFiltro = valor
-        return builder
-      },
+      eq: () => builder,
       neq: () => builder,
       lt: () => builder,
       gt: () => builder,
-      like: () => builder,
+      like: () => { esLike = true; return builder },
       order: () => builder,
       limit: () => builder,
       in: () => builder,
@@ -98,9 +107,12 @@ function makeSupabaseMock({ cabanasOcupadas = {} } = {}) {
         return Promise.resolve({ data: null, error: null })
       },
       then: (onFulfilled, onRejected) => {
-        const data = table === 'reservas' && cabanaFiltro && cabanasOcupadas[cabanaFiltro]
-          ? cabanasOcupadas[cabanaFiltro]
-          : []
+        let data = []
+        if (table === 'reservas' && !esInsert && !esLike) {
+          data = Object.entries(cabanasOcupadas).flatMap(([cab, filas]) =>
+            filas.map((f) => ({ ...f, cabana: cab }))
+          )
+        }
         return Promise.resolve({ data, error: null }).then(onFulfilled, onRejected)
       },
     }

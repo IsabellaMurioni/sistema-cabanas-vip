@@ -14,7 +14,7 @@ import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import ReservaForm from '../../src/pages/ReservaForm'
 
 vi.mock('../../src/lib/supabase', () => ({ supabase: { from: vi.fn() } }))
-vi.mock('../../src/context/ComplejoContext', () => ({ useComplejo: vi.fn() }))
+vi.mock('../../src/context/ComplejoContext', () => ({ useComplejo: vi.fn(), nombreActualDeCabana: (cabanasActivo, nombre) => nombre }))
 vi.mock('../../src/lib/email', () => ({
   sendEmailConfirmacion: vi.fn(),
   sendEmailRecibo: vi.fn(),

@@ -31,7 +31,7 @@ import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import ReservaForm from '../../src/pages/ReservaForm'
 
 vi.mock('../../src/lib/supabase', () => ({ supabase: { from: vi.fn() } }))
-vi.mock('../../src/context/ComplejoContext', () => ({ useComplejo: vi.fn() }))
+vi.mock('../../src/context/ComplejoContext', () => ({ useComplejo: vi.fn(), nombreActualDeCabana: (cabanasActivo, nombre) => nombre }))
 vi.mock('../../src/lib/email', () => ({
   sendEmailConfirmacion: vi.fn(),
   sendEmailRecibo: vi.fn(),
@@ -50,24 +50,29 @@ const COMPLEJO_VIP = { id: 'complejo-vip', slug: 'cabanas-vip', nombre: 'Cabaña
 //  - `update(payload)`: captura el payload del UPDATE (en vez de
 //    insert) para los asserts.
 //  - `neq('id', valor)` FUNCIONAL (no un no-op como en el mock de
-//    creación): filtra ese id de `cabanasOcupadas[cabana]` antes de
-//    resolver — necesario para poder probar de verdad la exclusión de
-//    la propia reserva, tanto en el preview en vivo (que además filtra
-//    de nuevo del lado de la app) como en el re-chequeo final del
-//    submit (que depende 100% de este `.neq('id', id)` del lado del
-//    mock, como en Supabase real).
+//    creación): filtra ese id de la unión de `cabanasOcupadas` antes
+//    de resolver — necesario para poder probar de verdad la exclusión
+//    de la propia reserva, tanto en el preview en vivo (que además
+//    filtra de nuevo del lado de la app) como en el re-chequeo final
+//    del submit (que depende 100% de este `.neq('id', id)` del lado
+//    del mock, como en Supabase real).
+//
+// El código real YA NO filtra por `.eq('cabana', cabana)` (fix del bug
+// multi-cabaña — ver reserva-form-multi-cabana.test.jsx) — este mock
+// ya no captura `cabanaFiltro`, devuelve la unión de todas las filas
+// de `cabanasOcupadas` (cada una etiquetada con su propio `cabana`,
+// como en la base real) y deja que el código real resuelva cuáles
+// aplican a cada cabaña candidata.
 function makeSupabaseMock({ cabanasOcupadas = {}, reservaExistente = null } = {}) {
   let ultimoUpdateReservas = null
   let cantidadUpdates = 0
 
   const from = vi.fn((table) => {
-    let cabanaFiltro = null
     let idBuscado = null
     let idExcluido = null
     const builder = {
       select: () => builder,
       eq: (campo, valor) => {
-        if (campo === 'cabana') cabanaFiltro = valor
         if (campo === 'id') idBuscado = valor
         return builder
       },
@@ -97,8 +102,8 @@ function makeSupabaseMock({ cabanasOcupadas = {}, reservaExistente = null } = {}
         return Promise.resolve({ data: null, error: null })
       },
       then: (onFulfilled, onRejected) => {
-        let data = table === 'reservas' && cabanaFiltro && cabanasOcupadas[cabanaFiltro]
-          ? cabanasOcupadas[cabanaFiltro]
+        let data = table === 'reservas'
+          ? Object.entries(cabanasOcupadas).flatMap(([cab, filas]) => filas.map((f) => ({ ...f, cabana: cab })))
           : []
         if (idExcluido !== null) data = data.filter((r) => String(r.id) !== String(idExcluido))
         return Promise.resolve({ data, error: null }).then(onFulfilled, onRejected)
