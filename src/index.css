@@ -77,6 +77,37 @@
     cursor: not-allowed;
   }
 
+  /* `.field` ya tiene `width: 100%` (y box-sizing: border-box es
+     global, ver arriba) — alcanza para un <input type="text"/number>,
+     pero no para <input type="date">: en mobile Safari/WebKit, un
+     input de fecha se renderiza con el control nativo del SO, que por
+     default calcula su propio ancho intrínseco (min-content) a partir
+     de sus segmentos día/mes/año en vez de respetar un width de CSS —
+     el resultado es una caja más angosta que sus hermanos de texto en
+     el mismo form, con un hueco vacío a la derecha (bug real
+     reportado: en "Nuevo movimiento" de Caja, FECHA quedaba más
+     angosto que DETALLE/MONTO/etc. en mobile). `-webkit-appearance:
+     none` saca el control nativo del cálculo de layout y lo deja
+     seguir el box model estándar de CSS, igual que cualquier otro
+     input.
+
+     Acotado a `.caja-modal` (la clase del overlay de Modal en
+     Caja.jsx/CajaTemporada.jsx — ver ahí) a propósito, NO al
+     `.field[type="date"]` global: el mismo bug late en cualquier otro
+     `<input type="date">` de la app que use `.field` (ReservaForm.jsx,
+     Precios.jsx, ReservaPago.jsx), pero el dueño del producto pidió
+     explícitamente dejar esos sin tocar por ahora — es una decisión
+     aparte, para más adelante, no un olvido. Scoped a mobile
+     únicamente (max-width: 640px, el breakpoint `sm:` que ya usa el
+     resto de la app) para no tocar desktop, donde ya está confirmado
+     que se ve bien. */
+  @media (max-width: 640px) {
+    .caja-modal .field[type="date"] {
+      -webkit-appearance: none;
+      appearance: none;
+    }
+  }
+
   /* ── Buttons ─────────────────────────────────────────────── */
   button {
     display: inline-flex;

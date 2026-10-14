@@ -169,9 +169,16 @@ function EmptyOrLoading({ loading }) {
 // wrapper por completo, así que su `position: fixed` siempre es
 // relativo al viewport real, sin importar qué transform tenga
 // cualquier ancestro de la página (presente o futuro).
+//
+// Clase `caja-modal` en el overlay: scope para el fix de ancho del
+// campo FECHA en mobile (ver `.caja-modal .field[type="date"]` en
+// src/index.css) — a propósito acotado a los modales de Caja/
+// CajaTemporada nada más (decisión del dueño del producto), NO al
+// `.field[type="date"]` global, que sigue intacto en cualquier otro
+// form de la app (ReservaForm.jsx, Precios.jsx, ReservaPago.jsx).
 export function Modal({ title, onClose, children }) {
   return createPortal(
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+    <div className="caja-modal fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div className="bg-white rounded-[16px] border border-[#f0e6d8] w-full max-w-md max-h-[92vh] overflow-y-auto"
            onClick={e => e.stopPropagation()}>
         <div className="px-6 pt-6 pb-3 border-b border-[#f0e6d8]">
