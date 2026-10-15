@@ -112,6 +112,17 @@ export function agruparPorCabana(reservas, cabanasActivo) {
 // filas. Mismo criterio para el detalle por reserva más abajo (antes
 // usaba un `cobrado`/`aCobrar` sin capear, que podía dar un "A cobrar"
 // negativo en el caso de sobrepago).
+//
+// ESTO sigue valiendo tal cual para fReservas (no-Canceladas). Pero
+// desde que "Lo cobrado" también suma cobradoCanceladas (la seña ya
+// cobrada de reservas Canceladas, que el negocio no devuelve — ver
+// reservasCanceladas más arriba), la reconciliación de las 3
+// tarjetas YA NO es exacta a nivel de pantalla: "Lo cobrado" + "Lo
+// pendiente" va a dar MÁS que "Facturado", por exactamente
+// cobradoCanceladas. Es a propósito, no un bug — esa plata de
+// Canceladas nunca estuvo, ni va a estar, en "Facturado"/"Lo
+// pendiente" (la estadía no va a pasar), pero sigue siendo plata
+// real cobrada.
 export function cobradoYPendienteDeReserva(r) {
   const cobradoRaw = (r.sena1_monto || 0) + (r.sena2_monto || 0) + (r.pago_cabana_monto || 0)
   const pendienteRow = Math.max((r.monto_total || 0) - cobradoRaw, 0)
@@ -227,6 +238,19 @@ export default function Ganancias() {
   const { getCabanaColor, complejoActivo, cabanasActivo } = useComplejo()
   const isVip = complejoActivo?.slug === 'cabanas-vip'
   const [reservas, setReservas]       = useState([])
+  // Reservas Canceladas con seña ya cobrada — dataset SEPARADO del de
+  // arriba a propósito (no se mezcla con `reservas`/`fReservas`, que
+  // todo el resto de la pantalla — cantidad, top cabañas, export CSV,
+  // detalle por reserva — sigue leyendo exactamente igual que antes,
+  // sin ninguna Cancelada). Regla de negocio: una reserva sólo tiene
+  // plata encima desde que llega a Confirmada (pagar la 1ª seña es lo
+  // que la mueve ahí) — si después se cancela manualmente, esa seña
+  // NO se devuelve, el negocio se la queda. Por eso su `monto_total`/
+  // saldo pendiente no debe entrar a "Facturado"/"Lo pendiente" (esa
+  // plata nunca va a cobrarse, la estadía no va a pasar), pero lo YA
+  // cobrado sí tiene que seguir contando en "Lo cobrado" — ver
+  // cobradoCanceladas más abajo.
+  const [reservasCanceladas, setReservasCanceladas] = useState([])
   const [silvia, setSilvia]           = useState([])
   const [juli, setJuli]               = useState([])
   const [banco, setBanco]             = useState([]) // VIP: señas/pagos por transferencia bancaria
@@ -257,6 +281,7 @@ export default function Ganancias() {
   useEffect(() => {
     if (!complejoActivo) {
       setReservas([])
+      setReservasCanceladas([])
       setSilvia([])
       setJuli([])
       setBanco([])
@@ -291,7 +316,11 @@ export default function Ganancias() {
         supabase.from('caja_juli').select('*').eq('complejo_id', complejoActivo.id),
         supabase.from('caja_banco').select('*').eq('complejo_id', complejoActivo.id),
         supabase.from('caja_mercado_pago').select('*').eq('complejo_id', complejoActivo.id),
-      ]).then(([r, s, j, b, m]) => {
+        // Canceladas, aparte — ver comentario en reservasCanceladas más
+        // arriba: sólo se usan para sumar la seña ya cobrada (no
+        // devuelta) a "Lo cobrado", nunca se mezclan con `reservas`.
+        supabase.from('reservas').select('*').eq('complejo_id', complejoActivo.id).eq('estado', 'Cancelada'),
+      ]).then(([r, s, j, b, m, rc]) => {
         if (cancelado) return
         setReservas(r.data || [])
         setSilvia(s.data || [])
@@ -299,6 +328,7 @@ export default function Ganancias() {
         setBanco(b.data || [])
         setMp(m.data || [])
         setMovimientosCaja([])
+        setReservasCanceladas(rc.data || [])
         setLoading(false)
       })
     } else {
@@ -308,12 +338,15 @@ export default function Ganancias() {
       Promise.all([
         supabase.from('reservas').select('*').eq('complejo_id', complejoActivo.id).neq('estado', 'Cancelada'),
         fetchMovimientosPorComplejo(supabase, complejoActivo.id),
-      ]).then(([r, m]) => {
+        // Canceladas, aparte — mismo criterio que la rama VIP arriba.
+        supabase.from('reservas').select('*').eq('complejo_id', complejoActivo.id).eq('estado', 'Cancelada'),
+      ]).then(([r, m, rc]) => {
         if (cancelado) return
         setReservas(r.data || [])
         setSilvia([])
         setJuli([])
         setMovimientosCaja(m.data || [])
+        setReservasCanceladas(rc.data || [])
         setLoading(false)
       })
     }
@@ -338,6 +371,14 @@ export default function Ganancias() {
   const fReservas = useMemo(() =>
     reservas.filter(r => matchesPeriod(r.fecha_entrada)),
     [reservas, matchesPeriod]
+  )
+  // Mismo criterio de período que fReservas (bucketea por fecha_entrada,
+  // igual que todo lo demás en esta pantalla) — sólo se usa para
+  // cobradoCanceladas más abajo, nunca para Facturado/Lo pendiente/
+  // cantidad/top cabañas/export, que siguen leyendo fReservas tal cual.
+  const fReservasCanceladas = useMemo(() =>
+    reservasCanceladas.filter(r => matchesPeriod(r.fecha_entrada)),
+    [reservasCanceladas, matchesPeriod]
   )
   const fSilvia = useMemo(() =>
     silvia.filter(r => matchesPeriod(r.fecha)),
@@ -477,13 +518,28 @@ export default function Ganancias() {
   const reservasIncome = sumField(fReservas, 'monto_total')
   const reservasCount  = fReservas.length
 
-  // "Lo cobrado" / "Lo pendiente" — mismo fReservas que "Facturado"
-  // (mismo período, mismo .neq('estado','Cancelada'), sin ningún otro
-  // filtro por estado: una reserva Pendiente/Confirmada/Finalizada
-  // cuenta igual, tal como ya hace "Facturado" hoy). Ver
-  // cobradoYPendienteDeReserva más arriba para el cálculo por fila.
-  const reservasCobrado = fReservas.reduce((s, r) => s + cobradoYPendienteDeReserva(r).cobradoRow, 0)
+  // "Lo pendiente" — mismo fReservas que "Facturado" (mismo período,
+  // mismo .neq('estado','Cancelada'), sin ningún otro filtro por
+  // estado: una reserva Pendiente/Confirmada/Finalizada cuenta igual,
+  // tal como ya hace "Facturado" hoy). Una Cancelada NUNCA aporta acá
+  // — su saldo no cobrado no va a cobrarse, la estadía no va a pasar.
+  // Ver cobradoYPendienteDeReserva más arriba para el cálculo por fila.
   const reservasPendiente = fReservas.reduce((s, r) => s + cobradoYPendienteDeReserva(r).pendienteRow, 0)
+
+  // "Lo cobrado" = lo ya cobrado de las no-Canceladas (igual que
+  // siempre) + la seña ya cobrada de las Canceladas del período
+  // (fReservasCanceladas) — regla de negocio: esa seña NO se devuelve,
+  // el negocio se la queda, así que tiene que seguir contando como
+  // "cobrado" aunque la reserva en sí ya no cuente para Facturado/Lo
+  // pendiente. Suma cruda de sena1+sena2+pago_cabana (sin capear
+  // contra monto_total, a diferencia de cobradoYPendienteDeReserva):
+  // acá no nos interesa el monto_total de la reserva cancelada en
+  // absoluto, sólo lo que efectivamente se cobró.
+  const cobradoCanceladas = fReservasCanceladas.reduce(
+    (s, r) => s + (r.sena1_monto || 0) + (r.sena2_monto || 0) + (r.pago_cabana_monto || 0),
+    0
+  )
+  const reservasCobrado = fReservas.reduce((s, r) => s + cobradoYPendienteDeReserva(r).cobradoRow, 0) + cobradoCanceladas
 
   // Juli ingresos/egresos
   const juliIngresos = fJuliMain.filter(r => r.tipo_main === 'ingreso').reduce((s,r) => s + (r.importe||0), 0)
