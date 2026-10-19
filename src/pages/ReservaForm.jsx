@@ -32,6 +32,7 @@ const EMPTY_FORM = {
   celular: '',
   cabana: '',
   pax: 1,
+  mascotas: 0,
   fecha_entrada: '',
   fecha_salida: '',
   noches: 0,
@@ -687,6 +688,7 @@ export default function ReservaForm() {
           celular: data.celular ?? '',
           cabana: data.cabana ?? '',
           pax: data.pax ?? 1,
+          mascotas: data.mascotas ?? 0,
           fecha_entrada: data.fecha_entrada ?? '',
           fecha_salida: data.fecha_salida ?? '',
           noches: data.noches ?? 0,
@@ -1156,6 +1158,7 @@ export default function ReservaForm() {
       celular: form.celular || null,
       cabana: form.cabana,
       pax: Number(form.pax) || 1,
+      mascotas: Number(form.mascotas) || 0,
       fecha_entrada: form.fecha_entrada,
       fecha_salida: form.fecha_salida,
       noches: calcNoches(form.fecha_entrada, form.fecha_salida),
@@ -1499,6 +1502,15 @@ export default function ReservaForm() {
                 min={1}
                 value={form.pax}
                 onChange={(e) => { set('pax', e.target.value); setMontoModificado(false) }}
+                className={inputClass}
+              />
+            </Field>
+            <Field label="Mascotas">
+              <input
+                type="number"
+                min={0}
+                value={form.mascotas}
+                onChange={(e) => set('mascotas', e.target.value)}
                 className={inputClass}
               />
             </Field>

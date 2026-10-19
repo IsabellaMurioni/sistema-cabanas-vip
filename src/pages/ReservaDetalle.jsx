@@ -163,6 +163,7 @@ export default function ReservaDetalle() {
             <div>
               <DataRow label="Cabaña" value={reserva.cabana} />
               <DataRow label="PAX" value={reserva.pax} />
+              <DataRow label="Mascotas" value={reserva.mascotas} />
               <DataRow label="Mes" value={reserva.mes} />
             </div>
             <div>

@@ -796,6 +796,10 @@ export function ReservaPopup({ reserva, onClose, onView }) {
               <p className="text-[#333]">{reserva.pax ?? '-'}</p>
             </div>
             <div>
+              <p className="section-label mb-1">Mascotas</p>
+              <p className="text-[#333]">{reserva.mascotas ?? '-'}</p>
+            </div>
+            <div>
               <p className="section-label mb-1">Noches</p>
               <p className="text-[#333]">{reserva.noches ?? '-'}</p>
             </div>
@@ -883,7 +887,7 @@ export default function Disponibilidad() {
     let cancelado = false
     supabase
       .from('reservas')
-      .select('id, codigo, nombre_apellido, cabana, fecha_entrada, fecha_salida, estado, pax, noches, monto_total, sena1_monto, sena2_monto, pago_cabana_monto, celular')
+      .select('id, codigo, nombre_apellido, cabana, fecha_entrada, fecha_salida, estado, pax, mascotas, noches, monto_total, sena1_monto, sena2_monto, pago_cabana_monto, celular')
       .eq('complejo_id', complejoActivo.id)
       .neq('estado', 'Cancelada')
       .then(({ data }) => {
