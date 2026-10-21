@@ -20,7 +20,15 @@ function startOfToday() {
   return d
 }
 
-export function CalendarPicker({ value, onChange, label }) {
+// `className`/`triggerClassName` (opcionales): mismos props, mismo
+// default, que ya tiene la copia local de CalendarPicker en
+// Disponibilidad.jsx (que no se tocó, sigue con la suya propia — ver
+// comentario arriba) — agregados acá para que "Complejos del mar"
+// pueda reusar ESTE componente con el mismo layout "Desde/Hasta lado a
+// lado" que ya usa esa pantalla, en vez de reimplementarlo. Sin pasar
+// estos props (Ganancias.jsx/Reservas.jsx, sin cambios), el resultado
+// es byte-a-byte igual a antes.
+export function CalendarPicker({ value, onChange, label, className = '', triggerClassName = 'w-auto' }) {
   const [open, setOpen] = useState(false)
   const [view, setView] = useState(startOfMonth(value))
   const ref = useRef(null)
@@ -40,21 +48,21 @@ export function CalendarPicker({ value, onChange, label }) {
   const today = startOfToday()
 
   return (
-    <div className="relative" ref={ref}>
+    <div className={`relative ${className}`} ref={ref}>
       <div>
         {label && <p className="section-label mb-1">{label}</p>}
         <button
           type="button"
           onClick={() => { setView(startOfMonth(value)); setOpen(!open) }}
-          className="field flex items-center gap-2 cursor-pointer w-auto"
+          className={`field flex items-center gap-2 cursor-pointer ${triggerClassName}`}
         >
-          <svg className="w-4 h-4 text-[var(--color-primario)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-4 h-4 text-[var(--color-primario)] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
           </svg>
-          <span className="font-medium text-[#333] capitalize">
+          <span className="font-medium text-[#333] capitalize truncate min-w-0">
             {format(value, "d 'de' MMMM yyyy", { locale: es })}
           </span>
-          <svg className="w-3 h-3 text-[#888]" fill="currentColor" viewBox="0 0 20 20">
+          <svg className="w-3 h-3 text-[#888] flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
             <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
           </svg>
         </button>

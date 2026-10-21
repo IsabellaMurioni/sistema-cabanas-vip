@@ -14,6 +14,7 @@ import ReservaPago from './pages/ReservaPago'
 import Precios from './pages/Precios'
 import RedirectAComplejoDefault from './components/RedirectAComplejoDefault'
 import RequiereSeccion from './components/RequiereSeccion'
+import ComplejosDelMar from './pages/ComplejosDelMar'
 
 export default function App() {
   return (
@@ -27,6 +28,19 @@ export default function App() {
               element={
                 <PrivateRoute>
                   <RedirectAComplejoDefault />
+                </PrivateRoute>
+              }
+            />
+            {/* "Complejos del mar": nivel superior, deliberadamente FUERA
+                de /:complejoSlug/* — mismo precedente que /login y / de
+                arriba (chrome propio, sin Layout.jsx). No hay "complejo
+                activo" en esta vista — muestra cabañas de TODOS los
+                complejos a los que el usuario tiene acceso a la vez. */}
+            <Route
+              path="/complejos-del-mar"
+              element={
+                <PrivateRoute>
+                  <ComplejosDelMar />
                 </PrivateRoute>
               }
             />

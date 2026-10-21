@@ -58,6 +58,12 @@ export default function Layout({ children }) {
     { to: `/${complejoSlug}/caja`,           label: 'Caja',           icon: 'wallet'    },
     { to: `/${complejoSlug}/ganancias`,      label: 'Ganancias',      icon: 'chart'     },
     { to: `/${complejoSlug}/precios`,        label: 'Precios',        icon: 'tag'       },
+    // "Complejos del mar": única entrada que NO vive bajo /:complejoSlug/*
+    // (ruta de nivel superior, ver App.jsx) — sólo visible con acceso a
+    // más de un complejo, si no no tiene sentido mostrarla.
+    ...(complejosConAcceso.length > 1
+      ? [{ to: '/complejos-del-mar', label: 'Complejos del mar', icon: 'calendar' }]
+      : []),
   ], rolActivo)
 
   const email    = session?.user?.email || ''

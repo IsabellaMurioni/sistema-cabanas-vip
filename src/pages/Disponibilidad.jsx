@@ -742,8 +742,24 @@ function TimelineRow({ cabana, reservas, startDate, endDate, height = 40, onRese
 // Exportado (además del default) para que los tests unitarios puedan
 // renderizarlo directo, sin montar toda la página — mismo motivo que
 // agruparDiasPorMes más arriba.
-export function ReservaPopup({ reserva, onClose, onView }) {
+//
+// `colorOverride`/`complejoNombre` (opcionales): agregados para
+// "Complejos del mar", que muestra reservas de VARIOS complejos a la
+// vez — ahí, `getCabanaColor(reserva.cabana)` (color de la cabaña
+// dentro del complejo activo GLOBAL) resolvería mal, porque en esa
+// pantalla no hay ningún complejo "activo" y cada reserva puede ser de
+// uno distinto. Sin estos props (el caso de Disponibilidad.jsx, sin
+// cambios), el comportamiento es IDÉNTICO a antes — mismo color vía
+// getCabanaColor, mismo subtítulo (sólo el nombre de cabaña), mismo
+// label "Ver detalle", sin leyenda de salida. Pasándolos, el color y
+// el nombre de complejo pasan a ser los de ESA reserva puntual (nunca
+// los de la cabaña ni los de ningún complejo "activo"), el botón pasa
+// a decir "Ver detalle en {complejo} →" (mobile: "Ver detalle →") y
+// aparece una leyenda aclarando que se sale de esa vista unificada.
+export function ReservaPopup({ reserva, onClose, onView, colorOverride, complejoNombre }) {
   const { getCabanaColor } = useComplejo()
+  const color = colorOverride ?? getCabanaColor(reserva.cabana)
+  const mostrarContextoComplejo = complejoNombre != null
   const saldo =
     Number(reserva.monto_total || 0) -
     Number(reserva.sena1_monto || 0) -
@@ -752,18 +768,27 @@ export function ReservaPopup({ reserva, onClose, onView }) {
 
   return (
     <div
-      className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+      className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 sm:p-4"
       onClick={onClose}
     >
+      {/* Mobile: bottom sheet (esquinas superiores redondeadas, agarradera,
+          desliza desde abajo — mismo patrón que CabinMultiPicker en
+          ReservaForm.jsx). Desktop (`sm:` 640px+): modal centrado idéntico
+          a como ya se veía, sin cambios. */}
       <div
-        className="bg-white rounded-[16px] border border-[#f0e6d8] w-full max-w-sm overflow-hidden"
+        className="bg-white rounded-t-[20px] sm:rounded-[16px] border border-[#f0e6d8] w-full max-w-sm overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-5 py-4" style={{ backgroundColor: getCabanaColor(reserva.cabana) }}>
+        <div className="sm:hidden flex justify-center pt-2 pb-1" data-testid="reserva-popup-drag-handle">
+          <div className="h-1 w-10 rounded-full" style={{ backgroundColor: '#D7DEE8' }} />
+        </div>
+        <div className="px-5 py-4" style={{ backgroundColor: color }}>
           <div className="flex items-start justify-between">
             <div>
               <p className="font-mono font-bold text-lg text-white">{reserva.codigo}</p>
-              <p className="text-sm" style={{ color: 'rgba(255,255,255,0.8)' }}>{reserva.cabana}</p>
+              <p className="text-sm" style={{ color: 'rgba(255,255,255,0.8)' }}>
+                {mostrarContextoComplejo ? `${reserva.cabana} · ${complejoNombre}` : reserva.cabana}
+              </p>
             </div>
             <span className={ESTADO_STYLES[reserva.estado] || 'badge'}>
               {reserva.estado}
@@ -836,11 +861,24 @@ export function ReservaPopup({ reserva, onClose, onView }) {
           <button
             onClick={onView}
             className="flex-1 text-white rounded-[10px] py-2 text-sm font-semibold transition-all hover:-translate-y-px"
-            style={{ backgroundColor: getCabanaColor(reserva.cabana) }}
+            style={{ backgroundColor: color }}
           >
-            Ver detalle
+            {mostrarContextoComplejo ? (
+              <>
+                <span className="hidden sm:inline">Ver detalle en {complejoNombre} →</span>
+                <span className="sm:hidden">Ver detalle →</span>
+              </>
+            ) : (
+              'Ver detalle'
+            )}
           </button>
         </div>
+
+        {mostrarContextoComplejo && (
+          <p className="px-5 pb-4 text-[11px] text-[#888] text-center">
+            Al tocar "Ver detalle" se sale de Complejos del mar y se abre la reserva en el sistema de {complejoNombre}.
+          </p>
+        )}
       </div>
     </div>
   )
