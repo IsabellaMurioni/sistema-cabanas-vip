@@ -1222,11 +1222,38 @@ export default function ReservaForm() {
         ? new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString()
         : null
 
-      const { data: inserted, error: insertErr } = await supabase
-        .from('reservas')
-        .insert({ ...payload, complejo_id: complejoActivo.id, fecha_vencimiento: fechaVencimientoInicial })
-        .select('id, codigo, nombre_apellido, email, cabana, pax, fecha_entrada, fecha_salida, noches, monto_total, sena1_monto, sena1_tipo, sena1_fecha, estado')
-        .single()
+      // Reintento ante choque de código (ver fetchNextCode más arriba):
+      // dos "Nueva reserva" abiertas casi al mismo tiempo para el MISMO
+      // complejo pueden calcular el mismo próximo código (ninguna de
+      // las dos insertó todavía cuando ambas lo calcularon). El UNIQUE
+      // (complejo_id, codigo) (migración 014) ya protege la integridad
+      // de datos rechazando el segundo insert — esto sólo evita que ese
+      // rechazo se vea como un error confuso: si el insert falla
+      // específicamente por ESE choque (código Postgres 23505 —
+      // unique_violation; no se matchea err.message, frágil entre
+      // locales/versiones de Postgres), se pide un código nuevo y se
+      // reintenta, invisible para quien está guardando.
+      // `reservas_codigo_complejo_key` es hoy el ÚNICO unique
+      // constraint alcanzable desde este insert (ni siquiera `id`, que
+      // lo genera la base) — ver migraciones — así que chequear sólo
+      // el código 23505 ya es inequívoco en la práctica; si el día de
+      // mañana se agrega otro unique constraint sobre esta tabla, esto
+      // habría que revisarlo.
+      let codigoIntento = form.codigo
+      let inserted = null
+      let insertErr = null
+      for (let intento = 0; intento <= 2; intento++) {
+        const resultado = await supabase
+          .from('reservas')
+          .insert({ ...payload, codigo: codigoIntento, complejo_id: complejoActivo.id, fecha_vencimiento: fechaVencimientoInicial })
+          .select('id, codigo, nombre_apellido, email, cabana, pax, fecha_entrada, fecha_salida, noches, monto_total, sena1_monto, sena1_tipo, sena1_fecha, estado')
+          .single()
+        inserted = resultado.data
+        insertErr = resultado.error
+        if (!insertErr || insertErr.code !== '23505' || intento === 2) break
+        codigoIntento = await fetchNextCode(complejoActivo.id)
+      }
+      if (!insertErr) set('codigo', codigoIntento)
       err = insertErr
       newReserva = inserted
 
@@ -1240,8 +1267,8 @@ export default function ReservaForm() {
             cajaOps.push(supabase.from(tabla).insert({
               complejo_id:    complejoActivo.id,
               fecha:          form.sena1_fecha || hoy,
-              detalle:        `1ª Seña · ${form.codigo} - ${form.nombre_apellido}`,
-              reserva_codigo: form.codigo,
+              detalle:        `1ª Seña · ${codigoIntento} - ${form.nombre_apellido}`,
+              reserva_codigo: codigoIntento,
               reserva_nombre: form.nombre_apellido,
               ingreso:        Number(form.sena1_monto),
               egreso:         0,
@@ -1253,8 +1280,8 @@ export default function ReservaForm() {
             cajaOps.push(supabase.from(tabla).insert({
               complejo_id:    complejoActivo.id,
               fecha:          form.sena2_fecha || hoy,
-              detalle:        `2ª Seña · ${form.codigo} - ${form.nombre_apellido}`,
-              reserva_codigo: form.codigo,
+              detalle:        `2ª Seña · ${codigoIntento} - ${form.nombre_apellido}`,
+              reserva_codigo: codigoIntento,
               reserva_nombre: form.nombre_apellido,
               ingreso:        Number(form.sena2_monto),
               egreso:         0,
@@ -1266,7 +1293,7 @@ export default function ReservaForm() {
               complejo_id:     complejoActivo.id,
               fecha:           form.pago_cabana_fecha || hoy,
               cuenta:          'Alquiler',
-              detalle:         `Pago en cabaña · ${form.codigo} - ${form.nombre_apellido}`,
+              detalle:         `Pago en cabaña · ${codigoIntento} - ${form.nombre_apellido}`,
               ingreso_pesos:   Number(form.pago_cabana_monto),
               ingreso_dolares: 0,
               ingreso_juli:    0,
@@ -1278,7 +1305,7 @@ export default function ReservaForm() {
 
           if (cajaOps.length > 0) await Promise.all(cajaOps)
         } else {
-          await syncMovimientoSena(complejoActivo, newReserva.id, form.codigo, form.nombre_apellido,
+          await syncMovimientoSena(complejoActivo, newReserva.id, codigoIntento, form.nombre_apellido,
             form.sena1_monto, form.sena1_tipo, form.sena1_fecha,
             form.sena2_monto, form.sena2_tipo, form.sena2_fecha,
             form.pago_cabana_monto, form.pago_cabana_fecha)
