@@ -15,10 +15,6 @@
 //    tres cosas fallan como VALIDATION_ERROR, con el límite de 90
 //    días explícito en el mensaje cuando corresponde.
 //
-//  - Alcance de complejo: en esta fase, el ÚNICO `complejo_slug`
-//    válido para este endpoint es 'mimmo' — ver más abajo para el
-//    por qué.
-//
 //  - Semántica de superposición contra `reserva_cabanas`: el mismo
 //    medio-abierto que ya enforcea el EXCLUDE constraint de Fase 1
 //    (033_reserva_cabanas_exclusion.sql) — `fecha_entrada < [fecha_
@@ -35,14 +31,13 @@
 //    completa, no que "algo del mismo tipo" esté libre cada noche
 //    por separado.
 //
-// Alcance de complejo, deliberado y temporal: sólo 'mimmo' está
-// habilitado para este endpoint en esta fase — la credencial del bot
-// está scoped a Mimmo únicamente (ver cabanas.habilitado_bot,
-// 032_bot_scope_and_cancelacion.sql, que ya marca las 9 cabañas reales
-// de MIMMO I). Cualquier otro complejo_slug se rechaza explícito
-// (OUT_OF_SCOPE) en vez de consultarlo en silencio — esto hay que
-// revisarlo el día que otros complejos reciban acceso al bot, no es
-// un olvido ni un hardcode permanente.
+// Alcance de complejo: NO hay ningún hardcode de slug en este
+// archivo — cualquier complejo_slug válido se resuelve y se procesa
+// igual. El scope real sobre qué cabañas puede ver el bot lo da
+// `cabanas.habilitado_bot` (032_bot_scope_and_cancelacion.sql), que
+// hoy sólo está en true para las 9 de MIMMO I — un cambio de DATOS en
+// esa columna, no un cambio de código en este archivo, es lo que
+// habilita o restringe el alcance de este endpoint por complejo.
 //
 // Cliente de servicio: TODAS las queries de este archivo (incluida
 // `cabanas`/`complejos`, no sólo `reserva_cabanas`) usan el
@@ -130,14 +125,6 @@ Deno.serve(async (req) => {
     return botErrorResponse(
       'VALIDATION_ERROR',
       `El rango entre fecha_entrada y fecha_salida no puede superar ${MAX_RANGO_DIAS} días (pedido: ${rangoDias} días).`,
-    )
-  }
-
-  // Restricción deliberada y temporal — ver header.
-  if (complejo_slug !== 'mimmo') {
-    return botErrorResponse(
-      'OUT_OF_SCOPE',
-      `complejo_slug "${complejo_slug}" está fuera de alcance — por ahora este endpoint sólo opera sobre 'mimmo'.`,
     )
   }
 
