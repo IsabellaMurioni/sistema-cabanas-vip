@@ -160,11 +160,17 @@ Deno.serve(async (req) => {
     return botErrorResponse('NOT_FOUND', `No existe el complejo "${complejo_slug}".`)
   }
 
+  // `activa` (039_cabanas_activa.sql) se pide y se filtra, pero NUNCA
+  // se expone en la respuesta — es sólo el gate de "¿esta unidad
+  // puede operar hoy?", aplicado junto a `habilitado_bot` (no en vez
+  // de), para que una unidad fuera de servicio nunca aparezca como
+  // disponible sin importar su estado de ocupación real.
   const { data: cabanasBot, error: cabanasError } = await supabase
     .from('cabanas')
-    .select('id, nombre, pax_min, pax_max')
+    .select('id, nombre, pax_min, pax_max, categoria, planta, activa')
     .eq('complejo_id', complejo.id)
     .eq('habilitado_bot', true)
+    .eq('activa', true)
 
   if (cabanasError) {
     console.error('cabanas fetch error:', cabanasError.message)
@@ -198,9 +204,23 @@ Deno.serve(async (req) => {
 
   const idsOcupados = new Set((ocupadas ?? []).map((r) => r.cabana_id))
 
+  // `pax` reemplaza a `pax_min`/`pax_max` en la respuesta — un solo
+  // número (GREATEST de los dos). PostgREST `.select()` no admite
+  // expresiones SQL arbitrarias como GREATEST() sin una vista/función
+  // nueva en la base (fuera de alcance acá: sólo cambia la forma de
+  // la respuesta, no el schema) — se calcula en JS, sobre los mismos
+  // dos valores ya pedidos arriba. `categoria`/`planta` pasan tal
+  // cual, null incluido, para los complejos/filas que todavía no los
+  // tengan cargados (038_cabanas_categoria_planta.sql).
   const available = cabanasBot
     .filter((c) => !idsOcupados.has(c.id))
-    .map((c) => ({ unit_id: c.id, nombre: c.nombre, pax_min: c.pax_min, pax_max: c.pax_max }))
+    .map((c) => ({
+      unit_id: c.id,
+      nombre: c.nombre,
+      pax: Math.max(c.pax_min, c.pax_max),
+      categoria: c.categoria,
+      planta: c.planta,
+    }))
 
   return new Response(JSON.stringify({ available }), {
     headers: { 'Content-Type': 'application/json' },
